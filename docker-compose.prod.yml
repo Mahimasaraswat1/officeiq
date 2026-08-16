@@ -1,0 +1,115 @@
+# Production-shaped stack: the API and the built frontend as images, in front
+# of Postgres. Bring it up with an env file holding the real secrets:
+#
+#     docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#
+# This is a reference topology, not a hosted product. Two things it does not do,
+# because they belong to whatever runs it: terminate TLS (put a load balancer or
+# an nginx-proxy/Caddy in front — the app sets HSTS only when it sees https),
+# and back up the database volume.
+#
+# Every value below comes from the environment with no default. That is
+# deliberate: a compose file with a working default password is a compose file
+# that ships with a working default password.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
+    volumes:
+      - officeiq_pgdata:/var/lib/postgresql/data
+    # No published port: only the API needs to reach the database, and it does
+    # so over the compose network.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: bring the schema up to head before the API starts serving.
+  # Running migrations from a separate container rather than the API's start
+  # command means N replicas cannot race each other to migrate.
+  migrate:
+    build:
+      context: ./backend
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY}
+      ENVIRONMENT: production
+    command: alembic upgrade head
+
+  api:
+    build:
+      context: ./backend
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      ENVIRONMENT: production
+      DEBUG: "false"
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+
+      CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS, e.g. https://officeiq.example.com}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:?set ALLOWED_HOSTS}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:?set FRONTEND_BASE_URL}
+
+      # Real providers. The API refuses to start in production on any of the
+      # development stubs — see app/core/config.py.
+      EMAIL_BACKEND: smtp
+      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      EMAIL_FROM: ${EMAIL_FROM:-no-reply@officeiq.example.com}
+
+      STORAGE_BACKEND: s3
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}
+      S3_BUCKET: ${S3_BUCKET:?set S3_BUCKET}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY}
+      S3_REGION: ${S3_REGION:-us-east-1}
+
+      CHAT_PROVIDER: claude
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY}
+      EMBEDDING_PROVIDER: voyage
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY:?set VOYAGE_API_KEY}
+
+      FIRST_ADMIN_EMAIL: ${FIRST_ADMIN_EMAIL:?set FIRST_ADMIN_EMAIL}
+      FIRST_ADMIN_PASSWORD: ${FIRST_ADMIN_PASSWORD:?set FIRST_ADMIN_PASSWORD}
+
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health/ready"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        # Empty: the frontend calls /api on its own origin and nginx proxies it,
+        # so the browser never makes a cross-origin request.
+        VITE_API_BASE_URL: ""
+    restart: always
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-8080}:80"
+
+volumes:
+  officeiq_pgdata:

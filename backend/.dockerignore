@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Never ship real configuration or developer data into an image.
+.env
+outbox/
+storage/
+models/
+*.onnx
+
+tests/
+htmlcov/
+.coverage
+*.sqlite
+*.db

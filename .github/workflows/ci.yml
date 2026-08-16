@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # A newer push makes an in-flight run for the same ref pointless.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (SQLite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      # The stub OCR engine covers most tests; tesseract lets the handful of
+      # real-OCR tests run instead of skipping.
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr
+
+      - name: Install Python dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        working-directory: backend
+        run: pytest -q
+
+  backend-postgres:
+    name: Backend (PostgreSQL + pgvector)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: officeiq
+          POSTGRES_PASSWORD: officeiq
+          POSTGRES_DB: officeiq_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U officeiq"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install Python dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      # The SQLite job is the fast signal; this one exists to catch what only
+      # a real database shows — enum types, cascades, pgvector, and prepared
+      # statements surviving a schema change.
+      - name: Run tests against PostgreSQL
+        working-directory: backend
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://officeiq:officeiq@localhost:5432/officeiq_test
+        run: pytest -q
+
+      - name: Check migrations match the models
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+psycopg://officeiq:officeiq@localhost:5432/officeiq_test
+        run: |
+          alembic upgrade head
+          alembic check
+
+      - name: Check migrations reverse cleanly
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+psycopg://officeiq:officeiq@localhost:5432/officeiq_test
+        run: |
+          alembic downgrade base
+          alembic upgrade head
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+  images:
+    name: Docker images build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      # Build only — publishing is a deployment decision, not a CI one.
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
