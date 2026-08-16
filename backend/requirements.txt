@@ -1,0 +1,42 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sqlalchemy==2.0.36
+alembic==1.14.0
+psycopg[binary]==3.2.3
+pydantic==2.10.4
+pydantic-settings==2.7.0
+email-validator==2.2.0
+PyJWT==2.10.1
+bcrypt==4.2.1
+python-multipart==0.0.20
+
+# --- Phase 2: documents, OCR, resume parsing ---
+# Object storage (S3-compatible: MinIO locally, AWS S3 in production)
+boto3==1.35.92
+# OCR: self-hosted Tesseract via pytesseract (swappable — see app/services/ocr/)
+pytesseract==0.3.13
+pillow==11.1.0
+# PDF text extraction + page rasterisation (no poppler/system dependency)
+pymupdf==1.25.1
+# --- Phase 3: face matching (OpenCV DNN — YuNet + SFace) ---
+opencv-python-headless==4.11.0.86
+numpy==2.5.1
+
+# --- Phase 5: RAG chatbot ---
+# Generation: Claude via the official Anthropic SDK
+anthropic==0.120.2
+# Vector store: pgvector bindings for SQLAlchemy
+pgvector==0.5.0
+# Embeddings: Voyage AI (Anthropic's recommended embeddings partner —
+# the Claude API itself has no embeddings endpoint)
+voyageai==0.5.0
+
+# --- Phase 7: reports ---
+# Excel workbooks
+openpyxl==3.1.5
+# PDF documents
+reportlab==5.0.0
+
+# dev / test
+pytest==8.3.4
+httpx==0.28.1
