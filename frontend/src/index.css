@@ -1,0 +1,47 @@
+@import 'tailwindcss';
+
+@layer base {
+  /*
+   * One visible focus ring for the whole app.
+   *
+   * The browser default (`outline: auto 1px`) is thin, differs between
+   * browsers, and all but disappears against the dark navigation and the
+   * primary button. `:focus-visible` rather than `:focus` so a mouse click
+   * does not leave a ring behind, while keyboard users always get one.
+   */
+  html :focus-visible {
+    /* A literal rather than var(--color-slate-900): Tailwind's `transition`
+       utility animates outline-color, so the ring eases in from the element's
+       own colour. A fixed value keeps every ring identical once settled. */
+    outline: 2px solid #0f172a; /* slate-900 */
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /* On a dark surface the slate ring would be invisible, so invert it. */
+  html .bg-slate-900:focus-visible,
+  html .bg-red-600:focus-visible {
+    outline-color: #ffffff;
+    outline-offset: 1px;
+  }
+
+  /*
+   * Respect a reader who has asked for less motion: spinners still turn (a
+   * frozen spinner reads as a hang) but everything decorative stops.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+
+    .animate-spin {
+      animation-duration: 0.8s !important;
+      animation-iteration-count: infinite !important;
+    }
+  }
+}
