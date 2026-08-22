@@ -196,6 +196,10 @@ class ChatMessage(Base):
     escalated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
 
     model: Mapped[str | None] = mapped_column(String(64))
+    # Why an answer failed, kept so a failure is queryable instead of living
+    # only in the server's stdout. Never shown to the employee — the message
+    # they see is chosen from the outcome.
+    error_message: Mapped[str | None] = mapped_column(Text)
     input_tokens: Mapped[int | None] = mapped_column(Integer)
     output_tokens: Mapped[int | None] = mapped_column(Integer)
     latency_ms: Mapped[int | None] = mapped_column(Integer)

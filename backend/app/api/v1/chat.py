@@ -119,6 +119,9 @@ def ask(
         input_tokens=result.input_tokens,
         output_tokens=result.output_tokens,
         latency_ms=result.latency_ms,
+        # Stored, not shown: the employee gets the outcome-appropriate message
+        # while the cause stays queryable for whoever has to fix it.
+        error_message=result.error,
     )
     db.add(assistant_message)
     db.flush()
@@ -131,6 +134,7 @@ def ask(
         entity_id=conversation.id,
         detail={
             "outcome": result.outcome.value,
+            "error": result.error,
             "confidence": result.confidence,
             "citations": len(result.citations),
             "model": result.model,

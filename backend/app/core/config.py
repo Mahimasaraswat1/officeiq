@@ -238,6 +238,34 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return self.ENVIRONMENT == "production"
 
+    def provider_problems(self) -> list[str]:
+        """Providers configured without the credentials they need.
+
+        Checked in *every* environment, unlike production_problems(). A local
+        run with a keyless provider still boots — the rest of the app works
+        fine without the assistant — but it says so loudly at startup instead
+        of failing silently once per question, which is how a missing key
+        previously cost two debugging sessions.
+        """
+        problems: list[str] = []
+        if self.CHAT_PROVIDER == "claude" and not self.ANTHROPIC_API_KEY:
+            problems.append(
+                "CHAT_PROVIDER=claude but ANTHROPIC_API_KEY is not set — every "
+                "question will fail generation and escalate to HR."
+            )
+        if self.CHAT_PROVIDER == "groq" and not self.GROQ_API_KEY:
+            problems.append(
+                "CHAT_PROVIDER=groq but GROQ_API_KEY is not set — every question "
+                "will fail generation and escalate to HR."
+            )
+        if self.EMBEDDING_PROVIDER == "voyage" and not self.VOYAGE_API_KEY:
+            problems.append(
+                "EMBEDDING_PROVIDER=voyage but VOYAGE_API_KEY is not set — "
+                "retrieval falls back to the local hashing embedder, which "
+                "matches wording rather than meaning."
+            )
+        return problems
+
     def production_problems(self) -> list[str]:
         """Settings that must not reach production, as human-readable reasons.
 
