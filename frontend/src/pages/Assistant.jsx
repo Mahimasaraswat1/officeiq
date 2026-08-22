@@ -62,6 +62,31 @@ function Citations({ citations }) {
   )
 }
 
+/**
+ * How an escalation is presented depends on *why* it escalated.
+ *
+ * These all used to look identical, so a failed model call told the employee
+ * their question wasn't covered by the handbook — sending them to hunt for a
+ * documentation gap that did not exist.
+ */
+const ESCALATION_STYLE = {
+  escalated_no_context: {
+    bubble: 'bg-amber-50 text-amber-900 ring-amber-200',
+    note: "This isn't covered in the handbook, so it's better to check with HR than to rely on a guess.",
+  },
+  escalated_low_confidence: {
+    bubble: 'bg-amber-50 text-amber-900 ring-amber-200',
+    note: 'Related passages were found but they do not clearly answer this — confirm with HR before relying on them.',
+  },
+  error: {
+    bubble: 'bg-red-50 text-red-900 ring-red-200',
+    note: 'The assistant could not be reached. This is a technical fault, not a gap in the handbook — please try again shortly.',
+  },
+}
+
+const escalationStyle = (message) =>
+  ESCALATION_STYLE[message.outcome] ?? ESCALATION_STYLE.escalated_no_context
+
 function Bubble({ message }) {
   if (message.role === 'user') {
     return (
@@ -79,17 +104,14 @@ function Bubble({ message }) {
       <div
         className={`max-w-[85%] rounded-2xl rounded-bl-md px-4 py-3 text-sm shadow-card ring-1 ${
           message.escalated
-            ? 'bg-amber-50 text-amber-900 ring-amber-200'
+            ? escalationStyle(message).bubble
             : 'bg-white text-navy-800 ring-navy-100'
         }`}
       >
         <p className="whitespace-pre-line">{message.content}</p>
 
         {message.escalated ? (
-          <p className="mt-2 text-xs text-amber-700">
-            This isn't covered in the handbook, so it's better to check with HR than to
-            rely on a guess.
-          </p>
+          <p className="mt-2 text-xs opacity-80">{escalationStyle(message).note}</p>
         ) : (
           message.confidence != null && (
             <div className="mt-2">
@@ -221,6 +243,7 @@ export default function Assistant() {
           id: response.message_id,
           role: 'assistant',
           content: response.answer,
+          outcome: response.outcome,
           confidence: response.confidence,
           citations: response.citations,
           escalated: response.escalated,

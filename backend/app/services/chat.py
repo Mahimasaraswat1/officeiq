@@ -64,10 +64,31 @@ class ChatAnswer:
     error: str | None = None
 
 
-ESCALATION_MESSAGE = (
+# Three distinct fallbacks. They used to be one string, which meant a failed
+# model call told the employee their question "wasn't in the handbook" — sending
+# them to look for a documentation gap that did not exist, and hiding an outage
+# from whoever could have fixed it. What went wrong decides what they are told.
+
+NO_CONTEXT_MESSAGE = (
     "I couldn't find that in the company knowledge base, so I don't want to guess. "
     "Please contact your HR team — they can confirm the current policy for your case."
 )
+
+LOW_CONFIDENCE_MESSAGE = (
+    "I found some related policy, but not enough to answer this confidently, and a "
+    "near-miss on policy is worse than no answer. Please check with your HR team — "
+    "the passages I found are listed below."
+)
+
+SERVICE_ERROR_MESSAGE = (
+    "The assistant is temporarily unavailable, so I couldn't answer just now. This is "
+    "a technical problem on our side, not a gap in the handbook. Please try again in a "
+    "moment, or contact your HR team if it's urgent."
+)
+
+# Retained so existing imports keep working; the no-context text is the one
+# that carried this name.
+ESCALATION_MESSAGE = NO_CONTEXT_MESSAGE
 
 
 def build_context_block(chunks: list[RetrievedChunk]) -> str:
@@ -172,7 +193,7 @@ class ClaudeGenerator(ChatGenerator):
         except anthropic.APIStatusError as exc:
             logger.exception("Claude API error")
             return ChatAnswer(
-                text=ESCALATION_MESSAGE,
+                text=SERVICE_ERROR_MESSAGE,
                 outcome=ChatOutcome.ERROR,
                 confidence=0.0,
                 escalated=True,
@@ -182,7 +203,7 @@ class ClaudeGenerator(ChatGenerator):
         except Exception as exc:  # noqa: BLE001
             logger.exception("Claude call failed")
             return ChatAnswer(
-                text=ESCALATION_MESSAGE,
+                text=SERVICE_ERROR_MESSAGE,
                 outcome=ChatOutcome.ERROR,
                 confidence=0.0,
                 escalated=True,
@@ -195,7 +216,7 @@ class ClaudeGenerator(ChatGenerator):
         # A safety refusal is not an answer — escalate rather than surface it.
         if response.stop_reason == "refusal":
             return ChatAnswer(
-                text=ESCALATION_MESSAGE,
+                text=SERVICE_ERROR_MESSAGE,
                 outcome=ChatOutcome.ERROR,
                 confidence=0.0,
                 escalated=True,
@@ -283,7 +304,7 @@ class GroqGenerator(ChatGenerator):
         except groq.APIStatusError as exc:
             logger.exception("Groq API error")
             return ChatAnswer(
-                text=ESCALATION_MESSAGE,
+                text=SERVICE_ERROR_MESSAGE,
                 outcome=ChatOutcome.ERROR,
                 confidence=0.0,
                 escalated=True,
@@ -293,7 +314,7 @@ class GroqGenerator(ChatGenerator):
         except Exception as exc:  # noqa: BLE001
             logger.exception("Groq call failed")
             return ChatAnswer(
-                text=ESCALATION_MESSAGE,
+                text=SERVICE_ERROR_MESSAGE,
                 outcome=ChatOutcome.ERROR,
                 confidence=0.0,
                 escalated=True,
@@ -308,7 +329,7 @@ class GroqGenerator(ChatGenerator):
         # answer would be worse than handing the question to HR.
         if choice is not None and choice.finish_reason == "content_filter":
             return ChatAnswer(
-                text=ESCALATION_MESSAGE,
+                text=SERVICE_ERROR_MESSAGE,
                 outcome=ChatOutcome.ERROR,
                 confidence=0.0,
                 escalated=True,
@@ -349,7 +370,7 @@ class StubGenerator(ChatGenerator):
     ) -> ChatAnswer:
         if not chunks:
             return ChatAnswer(
-                text=ESCALATION_MESSAGE,
+                text=NO_CONTEXT_MESSAGE,
                 outcome=ChatOutcome.ESCALATED_NO_CONTEXT,
                 confidence=0.0,
                 escalated=True,
@@ -385,7 +406,7 @@ def _finalise(
 
     if said_insufficient or not text:
         return ChatAnswer(
-            text=ESCALATION_MESSAGE,
+            text=NO_CONTEXT_MESSAGE,
             outcome=ChatOutcome.ESCALATED_NO_CONTEXT,
             confidence=0.0,
             citations=[],
@@ -399,7 +420,7 @@ def _finalise(
     if confidence < settings.CHAT_ESCALATION_THRESHOLD:
         # The model produced an answer, but retrieval was too weak to trust it.
         return ChatAnswer(
-            text=ESCALATION_MESSAGE,
+            text=LOW_CONFIDENCE_MESSAGE,
             outcome=ChatOutcome.ESCALATED_LOW_CONFIDENCE,
             confidence=confidence,
             citations=[c.as_citation() for c in chunks],
@@ -439,7 +460,7 @@ def answer_question(
     """Generate a grounded answer, escalating when context is missing."""
     if not chunks:
         return ChatAnswer(
-            text=ESCALATION_MESSAGE,
+            text=NO_CONTEXT_MESSAGE,
             outcome=ChatOutcome.ESCALATED_NO_CONTEXT,
             confidence=0.0,
             escalated=True,

@@ -32,10 +32,20 @@ router = APIRouter(prefix="/chat", tags=["AI Assistant"])
 HISTORY_TURNS = 6
 TITLE_MAX = 80
 
-ESCALATION_HINT = (
-    "Contact your HR team for this one — they can confirm the policy for your "
-    "specific situation."
-)
+# The hint the UI shows alongside an escalation. It follows the reason, so a
+# technical fault does not send the employee chasing HR about a policy gap.
+ESCALATION_HINTS = {
+    ChatOutcome.ESCALATED_NO_CONTEXT: (
+        "Contact your HR team for this one — they can confirm the policy for your "
+        "specific situation."
+    ),
+    ChatOutcome.ESCALATED_LOW_CONFIDENCE: (
+        "Related passages are listed below, but check with HR before relying on them."
+    ),
+    ChatOutcome.ERROR: (
+        "Nothing is wrong with your question — please try again shortly."
+    ),
+}
 
 
 def _get_conversation(db: DbSession, conversation_id: uuid.UUID, user) -> ChatConversation:
@@ -156,7 +166,7 @@ def ask(
         confidence=result.confidence,
         citations=result.citations,
         escalated=result.escalated,
-        escalation_hint=ESCALATION_HINT if result.escalated else None,
+        escalation_hint=ESCALATION_HINTS.get(result.outcome) if result.escalated else None,
         model=result.model,
         latency_ms=result.latency_ms,
     )

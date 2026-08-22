@@ -12,7 +12,8 @@ import pytest
 from app.core.config import settings
 from app.models.enums import ChatOutcome
 from app.services.chat import (
-    ESCALATION_MESSAGE,
+    LOW_CONFIDENCE_MESSAGE,
+    NO_CONTEXT_MESSAGE,
     INSUFFICIENT_MARKER,
     _confidence_from,
     _finalise,
@@ -201,7 +202,7 @@ def test_insufficient_context_marker_escalates():
     assert result.outcome is ChatOutcome.ESCALATED_NO_CONTEXT
     assert result.escalated is True
     assert result.confidence == 0.0
-    assert result.text == ESCALATION_MESSAGE
+    assert result.text == NO_CONTEXT_MESSAGE
     assert INSUFFICIENT_MARKER not in result.text
     assert result.citations == []
 
@@ -219,7 +220,10 @@ def test_weak_retrieval_escalates_even_with_an_answer(monkeypatch):
 
     assert result.outcome is ChatOutcome.ESCALATED_LOW_CONFIDENCE
     assert result.escalated is True
-    assert result.text == ESCALATION_MESSAGE
+    # A near-miss is a different situation from nothing being found, and the
+    # employee is told which one happened.
+    assert result.text == LOW_CONFIDENCE_MESSAGE
+    assert result.text != NO_CONTEXT_MESSAGE
     # Citations are retained so HR can see what was retrieved.
     assert len(result.citations) == 1
 
