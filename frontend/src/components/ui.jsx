@@ -65,9 +65,11 @@ export function Button({
   ...props
 }) {
   const variants = {
-    primary: 'bg-slate-900 text-white hover:bg-slate-700 disabled:bg-slate-400',
+    // Primary actions wear the bright accent blue; navy is reserved for
+    // surfaces and text so the one blue always means "this is the action".
+    primary: 'bg-accent-600 text-white hover:bg-accent-700 disabled:bg-navy-300',
     secondary:
-      'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50 disabled:text-slate-500',
+      'bg-white text-navy-700 ring-1 ring-navy-200 hover:bg-navy-50 disabled:text-navy-400',
     danger: 'bg-red-600 text-white hover:bg-red-500 disabled:bg-red-300',
   }
   return (
@@ -76,7 +78,7 @@ export function Button({
       // a screen reader the label has not changed for no reason.
       disabled={disabled || loading}
       aria-busy={loading || undefined}
-      className={`inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition disabled:cursor-not-allowed ${variants[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition duration-200 disabled:cursor-not-allowed ${variants[variant]} ${className}`}
       {...props}
     >
       {loading && <SpinnerIcon />}

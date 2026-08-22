@@ -1,6 +1,71 @@
 @import 'tailwindcss';
 
+/* Self-hosted so the app has no CDN dependency and works offline. */
+@import '@fontsource-variable/plus-jakarta-sans';
+
+/*
+ * Design tokens.
+ *
+ * Defined once here so the palette has a single source of truth; changing a
+ * value below re-themes every screen. Tailwind v4 turns each entry into a
+ * utility, so `--color-navy-800` is usable as `bg-navy-800`, `text-navy-800`
+ * and so on.
+ *
+ * Existing screens still use the slate scale and are unaffected — these tokens
+ * are additive, and each screen adopts them as it is redesigned.
+ */
+@theme {
+  --font-sans:
+    'Plus Jakarta Sans Variable', ui-sans-serif, system-ui, -apple-system,
+    'Segoe UI', sans-serif;
+
+  /* Navy — the brand surface. 900 is the deepest, used for gradient ends. */
+  --color-navy-50: #f4f6fa;
+  --color-navy-100: #e4e9f2;
+  --color-navy-200: #c7d1e3;
+  --color-navy-300: #a9b6ce;
+  --color-navy-400: #6b7fa6;
+  --color-navy-500: #465a83;
+  --color-navy-600: #2f4266;
+  --color-navy-700: #24344f;
+  --color-navy-800: #1b2a4a;
+  --color-navy-900: #121e36;
+  --color-navy-950: #0b1424;
+
+  /* Bright blue — reserved for primary actions. */
+  --color-accent-50: #eff6ff;
+  --color-accent-100: #dbeafe;
+  --color-accent-500: #3b82f6;
+  --color-accent-600: #2563eb;
+  --color-accent-700: #1d4ed8;
+
+  /* Soft, layered shadows for the rounded-card pattern. */
+  --shadow-card: 0 1px 2px rgb(18 30 54 / 0.04), 0 8px 24px rgb(18 30 54 / 0.06);
+  --shadow-card-hover: 0 2px 4px rgb(18 30 54 / 0.06), 0 16px 40px rgb(18 30 54 / 0.1);
+}
+
+/*
+ * Per-role accents. Each is >= 4.5:1 against white text (verified).
+ *
+ * Declared here rather than in @theme on purpose: Tailwind v4 only emits a
+ * theme value when some utility class references it, and these are applied
+ * through inline `style` (the role is chosen at runtime). Inside @theme they
+ * were pruned from the build and every button rendered transparent.
+ */
+:root {
+  --color-role-admin: #6d28d9;
+  --color-role-hr: #2563eb;
+  --color-role-employee: #b45309;
+}
+
 @layer base {
+  body {
+    font-family: var(--font-sans);
+    /* Plus Jakarta Sans is geometric; a touch of optical smoothing keeps it
+       from looking heavy on macOS. */
+    -webkit-font-smoothing: antialiased;
+  }
+
   /*
    * One visible focus ring for the whole app.
    *
@@ -10,16 +75,19 @@
    * does not leave a ring behind, while keyboard users always get one.
    */
   html :focus-visible {
-    /* A literal rather than var(--color-slate-900): Tailwind's `transition`
-       utility animates outline-color, so the ring eases in from the element's
-       own colour. A fixed value keeps every ring identical once settled. */
-    outline: 2px solid #0f172a; /* slate-900 */
+    /* A literal rather than a var(): Tailwind's `transition` utility animates
+       outline-color, so the ring eases in from the element's own colour. A
+       fixed value keeps every ring identical once settled. */
+    outline: 2px solid #1b2a4a; /* navy-800 */
     outline-offset: 2px;
     border-radius: 2px;
   }
 
-  /* On a dark surface the slate ring would be invisible, so invert it. */
+  /* On a dark surface the navy ring would be invisible, so invert it. */
   html .bg-slate-900:focus-visible,
+  html .bg-accent-600:focus-visible,
+  html .bg-navy-800:focus-visible,
+  html .bg-navy-900:focus-visible,
   html .bg-red-600:focus-visible {
     outline-color: #ffffff;
     outline-offset: 1px;
