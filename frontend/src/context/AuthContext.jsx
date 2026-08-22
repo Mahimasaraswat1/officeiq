@@ -30,9 +30,9 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  const login = useCallback(async (email, password) => {
+  const login = useCallback(async (email, password, { remember = true } = {}) => {
     const data = await api.login(email, password)
-    tokens.set(data)
+    tokens.set(data, { remember })
     setUser(data.user)
     return data.user
   }, [])

@@ -9,20 +9,44 @@ const API = `${BASE_URL}/api/v1`
 const ACCESS_KEY = 'officeiq.access_token'
 const REFRESH_KEY = 'officeiq.refresh_token'
 
+/**
+ * Token storage, honouring "Remember me".
+ *
+ * Checked keeps the session in localStorage, so it survives closing the
+ * browser. Unchecked uses sessionStorage, which the browser discards when the
+ * tab closes — the behaviour the checkbox implies, on a shared machine.
+ *
+ * Reads check both stores so a token written either way is found, and clear()
+ * empties both so signing out never leaves one behind.
+ */
+const stores = () => [localStorage, sessionStorage]
+
 export const tokens = {
   get access() {
-    return localStorage.getItem(ACCESS_KEY)
+    return localStorage.getItem(ACCESS_KEY) ?? sessionStorage.getItem(ACCESS_KEY)
   },
   get refresh() {
-    return localStorage.getItem(REFRESH_KEY)
+    return localStorage.getItem(REFRESH_KEY) ?? sessionStorage.getItem(REFRESH_KEY)
   },
-  set({ access_token, refresh_token }) {
-    if (access_token) localStorage.setItem(ACCESS_KEY, access_token)
-    if (refresh_token) localStorage.setItem(REFRESH_KEY, refresh_token)
+  set({ access_token, refresh_token }, { remember = true } = {}) {
+    const store = remember ? localStorage : sessionStorage
+    // Drop any copy in the other store, or a stale token there would win on
+    // the next read and outlive the choice just made.
+    const other = remember ? sessionStorage : localStorage
+    if (access_token) {
+      store.setItem(ACCESS_KEY, access_token)
+      other.removeItem(ACCESS_KEY)
+    }
+    if (refresh_token) {
+      store.setItem(REFRESH_KEY, refresh_token)
+      other.removeItem(REFRESH_KEY)
+    }
   },
   clear() {
-    localStorage.removeItem(ACCESS_KEY)
-    localStorage.removeItem(REFRESH_KEY)
+    stores().forEach((store) => {
+      store.removeItem(ACCESS_KEY)
+      store.removeItem(REFRESH_KEY)
+    })
   },
 }
 
@@ -72,7 +96,11 @@ async function refreshAccessToken() {
     .then(async (response) => {
       if (!response.ok) return false
       const data = await response.json()
-      tokens.set({ access_token: data.access_token })
+      // Write the refreshed token back to whichever store the session
+      // already lives in, or a "don't remember me" login would quietly
+      // become persistent on its first refresh.
+      const remember = localStorage.getItem(REFRESH_KEY) !== null
+      tokens.set({ access_token: data.access_token }, { remember })
       return true
     })
     .catch(() => false)
