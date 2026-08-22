@@ -217,6 +217,45 @@ function SearchPreview() {
   )
 }
 
+/**
+ * A document indexed by the local hashing embedder is *not* searchable in any
+ * meaningful sense — it matches words, not meaning — yet its status still
+ * reads "ready". That combination once hid a knowledge base that silently
+ * answered nothing, so the placeholder index is called out explicitly
+ * wherever the status appears.
+ *
+ * `embedding_model` is the honest signal: "voyage:voyage-3" is a real model,
+ * "local:n/a" is the test stub, and null means it was never embedded at all.
+ */
+const isPlaceholderIndex = (doc) =>
+  !doc.embedding_model || doc.embedding_model.startsWith('local:')
+
+function StaleIndexBanner({ documents }) {
+  const affected = documents.filter(isPlaceholderIndex)
+  if (affected.length === 0) return null
+
+  return (
+    <div
+      role="status"
+      className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200"
+    >
+      <p className="font-semibold">
+        {affected.length} document{affected.length === 1 ? '' : 's'} indexed with the
+        local test embedder
+      </p>
+      <p className="mt-1 text-amber-800">
+        Their status says “ready”, but the local embedder matches wording rather than
+        meaning, so the assistant will usually fail to retrieve them. Set{' '}
+        <code className="rounded bg-amber-100 px-1">VOYAGE_API_KEY</code> and{' '}
+        <code className="rounded bg-amber-100 px-1">EMBEDDING_PROVIDER=voyage</code>,
+        then re-index each one.
+      </p>
+      <p className="mt-1.5 text-xs text-amber-800">
+        Affected: {affected.map((d) => d.title).join(', ')}
+      </p>
+    </div>
+  )
+}
 const DOC_ICON = <path d="M5 2h7l3 3v13H5V2zm6 1.5V6h2.5L11 3.5zM7 9h6v1.5H7V9zm0 3h6v1.5H7V12z" />
 
 /**
@@ -286,13 +325,26 @@ function DocumentLibrary({ documents, onAct }) {
 
   const Meta = ({ doc }) => (
     <div className="flex flex-wrap items-center gap-1.5">
+      {/* A placeholder index must never wear the reassuring green "ready". */}
       <span
+        title={
+          isPlaceholderIndex(doc)
+            ? `Indexed with ${doc.embedding_model ?? 'no embedder'} — not reliably searchable`
+            : `Indexed with ${doc.embedding_model}`
+        }
         className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-          STATUS_TONES[doc.status] ?? 'bg-navy-100 text-navy-700'
+          isPlaceholderIndex(doc) && doc.status === 'ready'
+            ? 'bg-amber-100 text-amber-900'
+            : (STATUS_TONES[doc.status] ?? 'bg-navy-100 text-navy-700')
         }`}
       >
-        {doc.status}
+        {isPlaceholderIndex(doc) && doc.status === 'ready' ? 'not searchable' : doc.status}
       </span>
+      {isPlaceholderIndex(doc) && (
+        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-amber-200">
+          {doc.embedding_model ?? 'never embedded'}
+        </span>
+      )}
       <span className="text-xs text-navy-500">
         {doc.chunk_count} passage{doc.chunk_count === 1 ? '' : 's'}
       </span>
@@ -609,6 +661,8 @@ export default function KnowledgeBase() {
           }}
         />
       </Card>
+
+      <StaleIndexBanner documents={documents} />
 
       <DocumentLibrary documents={documents} onAct={act} />
 
