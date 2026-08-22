@@ -55,7 +55,7 @@ def stats(db: DbSession, _: HrUser) -> KnowledgeStats:
         **knowledge_base_stats(db),
         embedding_provider=embedder.name,
         chat_provider=settings.CHAT_PROVIDER,
-        chat_model=settings.CHAT_MODEL,
+        chat_model=settings.active_chat_model,
     )
 
 

@@ -25,6 +25,8 @@ numpy==2.5.1
 # --- Phase 5: RAG chatbot ---
 # Generation: Claude via the official Anthropic SDK
 anthropic==0.120.2
+# Generation alternative: Groq (OpenAI-compatible API, has a free tier)
+groq==1.6.0
 # Vector store: pgvector bindings for SQLAlchemy
 pgvector==0.5.0
 # Embeddings: Voyage AI (Anthropic's recommended embeddings partner —

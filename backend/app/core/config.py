@@ -124,13 +124,34 @@ class Settings(BaseSettings):
     # --- RAG chatbot (Phase 5) ---------------------------------------------
     # Generation. The Claude API has no embeddings endpoint, so embeddings come
     # from a separate provider (see EMBEDDING_PROVIDER below).
-    # claude = Anthropic API | stub = deterministic canned answer for CI
-    CHAT_PROVIDER: Literal["claude", "stub"] = "claude"
+    # claude = Anthropic API | groq = Groq (OpenAI-compatible, free tier)
+    # stub = deterministic canned answer for CI
+    CHAT_PROVIDER: Literal["claude", "groq", "stub"] = "claude"
     ANTHROPIC_API_KEY: str | None = None
     CHAT_MODEL: str = "claude-opus-5"
+
+    # Groq. A separate model setting because the two providers share no model
+    # names — swapping CHAT_PROVIDER alone would otherwise send a Claude model
+    # id to Groq and 404.
+    GROQ_API_KEY: str | None = None
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
     CHAT_MAX_TOKENS: int = 2000
     # Adaptive thinking depth: low | medium | high | xhigh | max
     CHAT_EFFORT: Literal["low", "medium", "high", "xhigh", "max"] = "medium"
+
+    @property
+    def active_chat_model(self) -> str:
+        """The model the configured provider will actually call.
+
+        CHAT_MODEL and GROQ_MODEL are separate settings, so reporting
+        CHAT_MODEL regardless of provider would tell an operator the wrong
+        thing — a Groq deployment would claim to be running a Claude model.
+        """
+        if self.CHAT_PROVIDER == "groq":
+            return self.GROQ_MODEL
+        if self.CHAT_PROVIDER == "stub":
+            return "stub"
+        return self.CHAT_MODEL
 
     # Embeddings. voyage = Voyage AI (Anthropic's recommended partner);
     # local = deterministic hashing embedder used by the test suite.
@@ -288,6 +309,10 @@ class Settings(BaseSettings):
         bad(
             self.CHAT_PROVIDER == "claude" and not self.ANTHROPIC_API_KEY,
             "CHAT_PROVIDER=claude requires ANTHROPIC_API_KEY.",
+        )
+        bad(
+            self.CHAT_PROVIDER == "groq" and not self.GROQ_API_KEY,
+            "CHAT_PROVIDER=groq requires GROQ_API_KEY.",
         )
         bad(
             self.EMBEDDING_PROVIDER == "voyage" and not self.VOYAGE_API_KEY,

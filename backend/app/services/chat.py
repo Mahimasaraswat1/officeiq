@@ -1,4 +1,8 @@
-"""Grounded answer generation with Claude, plus HR escalation (PRD A.7.6).
+"""Grounded answer generation, plus HR escalation (PRD A.7.6).
+
+Providers are interchangeable: Claude, Groq, or a deterministic stub for CI.
+A provider only turns a question plus retrieved passages into text — every
+grounding rule lives in the shared code below.
 
 The model is instructed to answer *only* from retrieved context and to say so
 when the context does not cover the question. Combined with the confidence
@@ -215,6 +219,118 @@ class ClaudeGenerator(ChatGenerator):
         )
 
 
+class GroqGenerator(ChatGenerator):
+    """Generation via Groq's OpenAI-compatible chat completions API.
+
+    Groq is a drop-in alternative to Claude here because every grounding rule
+    lives outside the provider: the system prompt, the numbered context block,
+    the insufficient-context marker and the confidence gate are all shared, and
+    this class only has to return the model's text plus its token usage. Swap
+    the provider and the anti-hallucination behaviour is unchanged.
+
+    The one structural difference from the Anthropic client is that the system
+    prompt is an ordinary message rather than a separate parameter.
+    """
+
+    name = "groq"
+
+    def __init__(self) -> None:
+        self._client = None
+
+    def _get_client(self):
+        if self._client is None:
+            from groq import Groq
+
+            # The SDK also picks GROQ_API_KEY up from the environment, so a
+            # bare client still works when the setting is unset.
+            self._client = (
+                Groq(api_key=settings.GROQ_API_KEY)
+                if settings.GROQ_API_KEY
+                else Groq()
+            )
+        return self._client
+
+    def generate(
+        self,
+        question: str,
+        chunks: list[RetrievedChunk],
+        history: list[dict] | None = None,
+    ) -> ChatAnswer:
+        import groq
+
+        started = time.monotonic()
+        context = build_context_block(chunks)
+        user_content = (
+            f"Context passages:\n\n{context}\n\n"
+            f"---\n\nEmployee question: {question}"
+        )
+
+        messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        for turn in history or []:
+            messages.append({"role": turn["role"], "content": turn["content"]})
+        messages.append({"role": "user", "content": user_content})
+
+        try:
+            response = self._get_client().chat.completions.create(
+                model=settings.GROQ_MODEL,
+                max_tokens=settings.CHAT_MAX_TOKENS,
+                messages=messages,
+                # Near-deterministic: this is grounded extraction from supplied
+                # passages, not creative writing, and a policy answer should not
+                # vary between identical questions.
+                temperature=0.1,
+            )
+        except groq.APIStatusError as exc:
+            logger.exception("Groq API error")
+            return ChatAnswer(
+                text=ESCALATION_MESSAGE,
+                outcome=ChatOutcome.ERROR,
+                confidence=0.0,
+                escalated=True,
+                error=f"{exc.status_code}: {exc.message}"[:500],
+                latency_ms=int((time.monotonic() - started) * 1000),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Groq call failed")
+            return ChatAnswer(
+                text=ESCALATION_MESSAGE,
+                outcome=ChatOutcome.ERROR,
+                confidence=0.0,
+                escalated=True,
+                error=str(exc)[:500],
+                latency_ms=int((time.monotonic() - started) * 1000),
+            )
+
+        latency_ms = int((time.monotonic() - started) * 1000)
+        choice = response.choices[0] if response.choices else None
+
+        # Groq's equivalent of a refusal. Surfacing a filtered response as an
+        # answer would be worse than handing the question to HR.
+        if choice is not None and choice.finish_reason == "content_filter":
+            return ChatAnswer(
+                text=ESCALATION_MESSAGE,
+                outcome=ChatOutcome.ERROR,
+                confidence=0.0,
+                escalated=True,
+                model=response.model,
+                error="model declined to answer",
+                latency_ms=latency_ms,
+            )
+
+        text = ((choice.message.content if choice else None) or "").strip()
+
+        usage = getattr(response, "usage", None)
+        return _finalise(
+            text=text,
+            chunks=chunks,
+            model=response.model,
+            # OpenAI-style names for the same two numbers Claude reports.
+            input_tokens=getattr(usage, "prompt_tokens", None),
+            output_tokens=getattr(usage, "completion_tokens", None),
+            latency_ms=latency_ms,
+        )
+
+
 class StubGenerator(ChatGenerator):
     """Deterministic generator for CI — no API key, no network.
 
@@ -310,6 +426,8 @@ def _finalise(
 def get_generator() -> ChatGenerator:
     if settings.CHAT_PROVIDER == "stub":
         return StubGenerator()
+    if settings.CHAT_PROVIDER == "groq":
+        return GroqGenerator()
     return ClaudeGenerator()
 
 
