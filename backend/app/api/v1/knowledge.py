@@ -31,7 +31,7 @@ from app.schemas.knowledge import (
 from app.services.audit import record_audit
 from app.services.embeddings import get_embedder
 from app.services.knowledge import ingest_document, knowledge_base_stats
-from app.services.retrieval import retrieve
+from app.services.retrieval import retrieve, index_mismatches
 
 router = APIRouter(prefix="/knowledge", tags=["Knowledge Base"])
 
@@ -51,9 +51,14 @@ def _schedule_ingest(background: BackgroundTasks, document_id: uuid.UUID) -> Non
 @router.get("/stats", response_model=KnowledgeStats, summary="Knowledge base overview")
 def stats(db: DbSession, _: HrUser) -> KnowledgeStats:
     embedder = get_embedder()
+    # Documents left behind by an embedder change are invisible to search but
+    # still report "ready", so the count is surfaced rather than inferred.
+    mismatched = index_mismatches(db)
     return KnowledgeStats(
         **knowledge_base_stats(db),
         embedding_provider=embedder.name,
+        documents_stale_index=len(mismatched),
+        stale_index_models=sorted({model or "never embedded" for _, model in mismatched}),
         chat_provider=settings.CHAT_PROVIDER,
         chat_model=settings.active_chat_model,
     )

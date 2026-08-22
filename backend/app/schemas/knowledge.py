@@ -76,6 +76,11 @@ class KnowledgeStats(BaseModel):
     documents_published: int
     chunks_total: int
     embedding_provider: str
+    # Searchable documents whose vectors were produced by a different embedder
+    # than the one now answering questions. Anything above zero means those
+    # documents cannot be found at any similarity threshold.
+    documents_stale_index: int
+    stale_index_models: list[str]
     chat_provider: str
     chat_model: str
 

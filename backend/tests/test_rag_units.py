@@ -242,3 +242,57 @@ def test_strong_answer_is_served_with_citations(monkeypatch):
 def test_marker_detection_is_case_insensitive():
     result = _finalise_with("insufficient_context", [make_chunk(0.95)])
     assert result.escalated is True
+
+
+# --- Embedder guards ---------------------------------------------------------
+# Two failures used to be silent: a missing Voyage key quietly swapped in a
+# different embedder, and documents left behind by an embedder change stayed
+# "ready" while matching nothing. Both produced zero results and no signal.
+
+
+def test_missing_voyage_key_refuses_instead_of_substituting_an_embedder(monkeypatch):
+    """A keyless voyage config must fail loudly, not fall back to local.
+
+    The fallback put queries and documents in unrelated vector spaces, which
+    returns nothing for every question while every status still reads healthy.
+    """
+    from app.services import embeddings
+
+    monkeypatch.setattr(embeddings.settings, "EMBEDDING_PROVIDER", "voyage")
+    monkeypatch.setattr(embeddings.settings, "VOYAGE_API_KEY", None)
+    embeddings.get_embedder.cache_clear()
+
+    with pytest.raises(embeddings.EmbeddingError) as caught:
+        embeddings.get_embedder()
+
+    message = str(caught.value)
+    assert "VOYAGE_API_KEY" in message
+    assert "EMBEDDING_PROVIDER=local" in message  # names the escape hatch
+    embeddings.get_embedder.cache_clear()
+
+
+def test_index_mismatch_is_reported_when_documents_use_another_embedder(db):
+    """A document embedded elsewhere is listed; one matching the active embedder is not."""
+    from app.models.enums import KnowledgeCategory, KnowledgeStatus
+    from app.models.knowledge import KnowledgeDocument
+    from app.services import embeddings
+    from app.services.retrieval import index_mismatches
+
+    document = KnowledgeDocument(
+        title="Annual Leave Policy",
+        content="Employees accrue 24 days of annual leave each year.",
+        category=KnowledgeCategory.POLICY,
+        status=KnowledgeStatus.READY,
+        is_published=True,
+        embedding_model="voyage:voyage-3",
+    )
+    db.add(document)
+    db.commit()
+
+    # conftest pins the active embedder to local, so this document is stranded.
+    assert embeddings.get_embedder().name == "local"
+    assert (document.title, "voyage:voyage-3") in index_mismatches(db)
+
+    document.embedding_model = "local:n/a"
+    db.commit()
+    assert document.title not in [title for title, _ in index_mismatches(db)]

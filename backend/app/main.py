@@ -20,6 +20,7 @@ from app.core.middleware import (
     RequestIdFilter,
     SecurityHeadersMiddleware,
 )
+from app.services.embeddings import get_embedder
 
 DOCS_PATHS = ("/docs", "/redoc", "/openapi.json")
 
@@ -74,11 +75,17 @@ if settings.ALLOWED_HOSTS and settings.ALLOWED_HOSTS != ["*"]:
 
 app.add_middleware(RequestContextMiddleware)
 
-# Say at boot what will silently fail at request time. A keyless provider is
-# not fatal outside production — the rest of the app is unaffected — but it
+# Say at boot what will silently fail at request time. A keyless chat provider
+# is not fatal outside production — the rest of the app is unaffected — but it
 # must not be discoverable only by asking the assistant a question.
 for _problem in settings.provider_problems():
     logging.getLogger("app.startup").warning("CONFIGURATION: %s", _problem)
+
+# The embedder is resolved eagerly and deliberately allowed to raise. A
+# mis-set embeddings provider does not degrade search, it silently breaks it,
+# so the process refuses to start rather than serve zero results that look
+# like an empty knowledge base.
+get_embedder()
 
 register_exception_handlers(app)
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)

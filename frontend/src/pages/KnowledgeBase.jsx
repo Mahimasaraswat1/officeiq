@@ -230,9 +230,25 @@ function SearchPreview() {
 const isPlaceholderIndex = (doc) =>
   !doc.embedding_model || doc.embedding_model.startsWith('local:')
 
-function StaleIndexBanner({ documents }) {
-  const affected = documents.filter(isPlaceholderIndex)
+/**
+ * Documents that cannot be retrieved, and why.
+ *
+ * A document's vectors belong to whichever embedder produced them. When the
+ * active embedder differs, the two live in unrelated vector spaces and no
+ * similarity threshold can match them — search returns nothing while the
+ * document still reports "ready". That combination is impossible to diagnose
+ * from the UI, so it is stated here in the terms needed to fix it.
+ */
+function StaleIndexBanner({ documents, activeProvider }) {
+  const affected = documents.filter((doc) => {
+    if (!doc.embedding_model) return true
+    if (!activeProvider) return isPlaceholderIndex(doc)
+    return !doc.embedding_model.startsWith(`${activeProvider}:`)
+  })
   if (affected.length === 0) return null
+
+  const onLocal = activeProvider === 'local'
+  const count = affected.length
 
   return (
     <div
@@ -240,18 +256,33 @@ function StaleIndexBanner({ documents }) {
       className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200"
     >
       <p className="font-semibold">
-        {affected.length} document{affected.length === 1 ? '' : 's'} indexed with the
-        local test embedder
+        {count} document{count === 1 ? '' : 's'}{' '}
+        {onLocal
+          ? 'indexed with the local test embedder'
+          : `indexed by a different embedder than the active one (${activeProvider})`}
       </p>
       <p className="mt-1 text-amber-800">
-        Their status says “ready”, but the local embedder matches wording rather than
-        meaning, so the assistant will usually fail to retrieve them. Set{' '}
-        <code className="rounded bg-amber-100 px-1">VOYAGE_API_KEY</code> and{' '}
-        <code className="rounded bg-amber-100 px-1">EMBEDDING_PROVIDER=voyage</code>,
-        then re-index each one.
+        {onLocal ? (
+          <>
+            Their status says “ready”, but the local embedder matches wording rather
+            than meaning, so the assistant will usually fail to retrieve them. Set{' '}
+            <code className="rounded bg-amber-100 px-1">VOYAGE_API_KEY</code> and{' '}
+            <code className="rounded bg-amber-100 px-1">EMBEDDING_PROVIDER=voyage</code>,
+            then re-index each one.
+          </>
+        ) : (
+          <>
+            Their status says “ready”, but the assistant cannot find them at any
+            threshold — their vectors came from a different model. Re-index them, or
+            switch back to the embedder that produced them.
+          </>
+        )}
       </p>
       <p className="mt-1.5 text-xs text-amber-800">
-        Affected: {affected.map((d) => d.title).join(', ')}
+        Affected:{' '}
+        {affected
+          .map((d) => `${d.title} [${d.embedding_model || 'never embedded'}]`)
+          .join(', ')}
       </p>
     </div>
   )
@@ -662,7 +693,7 @@ export default function KnowledgeBase() {
         />
       </Card>
 
-      <StaleIndexBanner documents={documents} />
+      <StaleIndexBanner documents={documents} activeProvider={stats?.embedding_provider} />
 
       <DocumentLibrary documents={documents} onAct={act} />
 

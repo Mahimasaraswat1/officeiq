@@ -17,7 +17,7 @@ from app.core.config import settings
 from app.core.database import engine
 from app.models.enums import KnowledgeCategory, KnowledgeStatus
 from app.models.knowledge import KnowledgeChunk, KnowledgeDocument
-from app.services.embeddings import cosine_similarity, get_embedder
+from app.services.embeddings import cosine_similarity, get_embedder, active_embedder_name
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,33 @@ class RetrievedChunk:
 
 def _searchable_filters():
     """Only published, fully-ingested documents are retrievable."""
+    return [
+        KnowledgeDocument.is_published.is_(True),
+        KnowledgeDocument.status == KnowledgeStatus.READY,
+    ]
+
+
+def index_mismatches(db: Session) -> list[tuple[str, str | None]]:
+    """Searchable documents whose stored vectors came from a different embedder.
+
+    A document embedded by one model and queried by another cannot match at
+    any threshold — the two vector spaces are unrelated. Reporting the pairing
+    turns a baffling "nothing found" into a one-line diagnosis.
+    """
+    active = active_embedder_name()
+    rows = db.execute(
+        select(KnowledgeDocument.title, KnowledgeDocument.embedding_model)
+        .where(*_searchable_filters_documents())
+    ).all()
+    return [
+        (title, model)
+        for title, model in rows
+        if not (model or "").startswith(f"{active}:")
+    ]
+
+
+def _searchable_filters_documents() -> list:
+    """Document-level equivalent of the chunk filters used by retrieve()."""
     return [
         KnowledgeDocument.is_published.is_(True),
         KnowledgeDocument.status == KnowledgeStatus.READY,
@@ -122,5 +149,22 @@ def retrieve(
         )
         if len(results) >= top_k:
             break
+
+    # An empty result set is the symptom a mismatched index produces, so this
+    # is the moment to say whether the index is the reason. Only checked when
+    # nothing matched, so the common path costs no extra query.
+    if not results:
+        mismatched = index_mismatches(db)
+        if mismatched:
+            logger.error(
+                "RETRIEVAL RETURNED NOTHING and %d searchable document(s) are "
+                "embedded by a different model than the active one (%r). These "
+                "vector spaces are unrelated, so no threshold can match them. "
+                "Re-index, or restore the embedder that produced them. "
+                "Affected: %s",
+                len(mismatched),
+                active_embedder_name(),
+                ", ".join(f"{title} [{model or 'never embedded'}]" for title, model in mismatched[:5]),
+            )
 
     return results

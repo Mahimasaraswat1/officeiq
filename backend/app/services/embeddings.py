@@ -154,18 +154,36 @@ class LocalHashEmbedder(Embedder):
 
 @lru_cache
 def get_embedder() -> Embedder:
+    """Resolve the configured embedder, or fail — never substitute silently.
+
+    This used to fall back to the local hashing embedder when the Voyage key
+    was missing, with only a log line to say so. That is the most dangerous
+    failure this system had: documents embedded by one model and queries by
+    another live in unrelated vector spaces, so every search returns nothing
+    while every health check still reports "ready". Measured on this project's
+    own data, a question that should score 0.5628 scored 0.0619.
+
+    An outage is recoverable. Silently wrong retrieval is not, because nobody
+    goes looking for it.
+    """
     if settings.EMBEDDING_PROVIDER == "local":
         return LocalHashEmbedder()
 
     embedder = VoyageEmbedder()
     if not embedder.is_available():
-        logger.warning(
-            "VOYAGE_API_KEY is not set — falling back to the local hashing "
-            "embedder. Retrieval quality will be poor; set the key or set "
-            "EMBEDDING_PROVIDER=local explicitly to silence this."
+        raise EmbeddingError(
+            "EMBEDDING_PROVIDER=voyage but VOYAGE_API_KEY is not set. Refusing "
+            "to fall back to the local hashing embedder: your documents are "
+            "embedded with a different model, so every search would silently "
+            "return nothing. Set VOYAGE_API_KEY, or set EMBEDDING_PROVIDER=local "
+            "and re-index every document."
         )
-        return LocalHashEmbedder()
     return embedder
+
+
+def active_embedder_name() -> str:
+    """The embedder actually in use, for comparison against stored documents."""
+    return get_embedder().name
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
