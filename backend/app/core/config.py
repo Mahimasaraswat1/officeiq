@@ -134,7 +134,11 @@ class Settings(BaseSettings):
     # names — swapping CHAT_PROVIDER alone would otherwise send a Claude model
     # id to Groq and 404.
     GROQ_API_KEY: str | None = None
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    # Groq retires models without notice, and a retired name fails as a 404 at
+    # request time rather than at startup. gpt-oss-120b follows the grounding
+    # instructions closely and does not leak reasoning into the answer, which
+    # qwen3.6-27b does (it emits a <think> block the citation parser then sees).
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
     CHAT_MAX_TOKENS: int = 2000
     # Adaptive thinking depth: low | medium | high | xhigh | max
     CHAT_EFFORT: Literal["low", "medium", "high", "xhigh", "max"] = "medium"
