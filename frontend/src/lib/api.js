@@ -334,6 +334,14 @@ export const api = {
   myTasks: () => request('/my-tasks'),
   myTaskProgress: () => request('/my-task-progress'),
 
+  // --- Holiday calendar ---
+  listHolidays: (params) => request(`/holidays${qs(params)}`),
+  holidaySummary: (params) => request(`/holidays/summary${qs(params)}`),
+  createHoliday: (payload) => request('/holidays', { method: 'POST', body: payload }),
+  updateHoliday: (id, payload) =>
+    request(`/holidays/${id}`, { method: 'PATCH', body: payload }),
+  deleteHoliday: (id) => request(`/holidays/${id}`, { method: 'DELETE' }),
+
   // --- Knowledge base & AI assistant (Phase 5) ---
   knowledgeStats: () => request('/knowledge/stats'),
   listKnowledgeDocuments: (params) => request(`/knowledge/documents${qs(params)}`),

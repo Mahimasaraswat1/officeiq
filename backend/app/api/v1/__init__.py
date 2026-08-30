@@ -9,6 +9,7 @@ from app.api.v1 import (
     dashboard,
     documents,
     employees,
+    holidays,
     knowledge,
     notifications,
     onboarding,
@@ -34,5 +35,6 @@ api_router.include_router(notifications.router)
 api_router.include_router(reports.router)
 api_router.include_router(users.router)
 api_router.include_router(audit.router)
+api_router.include_router(holidays.router)
 
 __all__ = ["api_router"]

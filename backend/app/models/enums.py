@@ -154,6 +154,20 @@ class FaceMatchStatus(str, Enum):
     ERROR = "error"
 
 
+class HolidayType(str, Enum):
+    """What kind of day off this is.
+
+    RESTRICTED is the Indian "optional holiday" convention: the company lists
+    more of them than any one employee may take. Only the label is modelled —
+    the pick-N-of-M entitlement is deliberately not, because nothing in this
+    build consumes it.
+    """
+
+    PUBLIC = "public"          # national/state holiday, office closed
+    RESTRICTED = "restricted"  # optional, employee chooses
+    COMPANY = "company"        # company-declared (founding day, shutdown)
+
+
 class AuditAction(str, Enum):
     """Actions written to the immutable audit log (PRD A.7.9)."""
 
@@ -183,6 +197,10 @@ class AuditAction(str, Enum):
     DOCUMENT_EXTRACTION_FAILED = "document_extraction_failed"
     DOCUMENT_REPROCESSED = "document_reprocessed"
     EXTRACTION_APPLIED = "extraction_applied"
+    # Holiday calendar
+    HOLIDAY_CREATED = "holiday_created"
+    HOLIDAY_UPDATED = "holiday_updated"
+    HOLIDAY_DELETED = "holiday_deleted"
     # Phase 3 — verification & HR review
     ID_VERIFICATION_RUN = "id_verification_run"
     FACE_MATCH_RUN = "face_match_run"

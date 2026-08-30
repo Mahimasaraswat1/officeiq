@@ -22,6 +22,7 @@ import Assistant from './pages/Assistant'
 import KnowledgeBase from './pages/KnowledgeBase'
 import Notifications from './pages/Notifications'
 import Reports from './pages/Reports'
+import Holidays from './pages/Holidays'
 
 export default function App() {
   return (
@@ -42,6 +43,8 @@ export default function App() {
               <Route path="/profile" element={<Profile />} />
               <Route path="/assistant" element={<Assistant />} />
               <Route path="/notifications" element={<Notifications />} />
+              {/* The calendar is company-wide reading; only editing is HR/Admin. */}
+              <Route path="/holidays" element={<Holidays />} />
 
               <Route element={<RequireAuth roles={['employee']} />}>
                 <Route path="/my-onboarding" element={<MyOnboarding />} />

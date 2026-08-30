@@ -11,6 +11,7 @@ from app.models.enums import (
     DocumentType,
     ExtractionSource,
     FaceMatchStatus,
+    HolidayType,
     InvitationStatus,
     KnowledgeCategory,
     KnowledgeStatus,
@@ -22,6 +23,7 @@ from app.models.enums import (
     VerificationCheckType,
     VerificationStatus,
 )
+from app.models.holiday import Holiday
 from app.models.knowledge import (
     ChatConversation,
     ChatMessage,
@@ -56,6 +58,8 @@ __all__ = [
     "ExtractionSource",
     "FaceMatch",
     "FaceMatchStatus",
+    "Holiday",
+    "HolidayType",
     "Invitation",
     "InvitationStatus",
     "KnowledgeCategory",
