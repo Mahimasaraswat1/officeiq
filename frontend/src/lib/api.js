@@ -334,6 +334,17 @@ export const api = {
   myTasks: () => request('/my-tasks'),
   myTaskProgress: () => request('/my-task-progress'),
 
+  // --- Requests & approvals ---
+  myRequests: () => request('/my-requests'),
+  submitRequest: (payload) => request('/my-requests', { method: 'POST', body: payload }),
+  cancelRequest: (id) => request(`/my-requests/${id}/cancel`, { method: 'POST' }),
+  requestQueue: (params) => request(`/requests${qs(params)}`),
+  requestCounts: () => request('/requests/counts'),
+  approveRequest: (id, note) =>
+    request(`/requests/${id}/approve`, { method: 'POST', body: { note: note ?? null } }),
+  rejectRequest: (id, note) =>
+    request(`/requests/${id}/reject`, { method: 'POST', body: { note } }),
+
   // --- Holiday calendar ---
   listHolidays: (params) => request(`/holidays${qs(params)}`),
   holidaySummary: (params) => request(`/holidays/summary${qs(params)}`),

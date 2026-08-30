@@ -17,6 +17,8 @@ from app.models.enums import (
     KnowledgeStatus,
     NotificationType,
     OnboardingStatus,
+    RequestStatus,
+    RequestType,
     TaskCategory,
     TaskStatus,
     UserRole,
@@ -31,6 +33,7 @@ from app.models.knowledge import (
     KnowledgeDocument,
 )
 from app.models.notification import Notification
+from app.models.request import Request
 from app.models.task import (
     AssignmentRule,
     AssignmentRuleItem,
@@ -60,6 +63,9 @@ __all__ = [
     "FaceMatchStatus",
     "Holiday",
     "HolidayType",
+    "Request",
+    "RequestStatus",
+    "RequestType",
     "Invitation",
     "InvitationStatus",
     "KnowledgeCategory",

@@ -14,6 +14,7 @@ from app.api.v1 import (
     notifications,
     onboarding,
     reports,
+    requests,
     search,
     tasks,
     users,
@@ -36,5 +37,6 @@ api_router.include_router(reports.router)
 api_router.include_router(users.router)
 api_router.include_router(audit.router)
 api_router.include_router(holidays.router)
+api_router.include_router(requests.router)
 
 __all__ = ["api_router"]

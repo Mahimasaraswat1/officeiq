@@ -24,6 +24,12 @@ const ICON = {
   reports: <path d="M4 12h3v5H4v-5zm4.5-5h3v10h-3V7zM13 3h3v14h-3V3z" />,
   users: <path d="M10 10a3.5 3.5 0 100-7 3.5 3.5 0 000 7zm0 1.5c-3.3 0-6 2-6 4.5v1h12v-1c0-2.5-2.7-4.5-6-4.5z" />,
   audit: <path d="M5 2h7l3 3v13H5V2zm6 1.5V6h2.5L11 3.5zM7 9h6v1.5H7V9zm0 3h6v1.5H7V12z" />,
+  requests: (
+    <path d="M6 2h8a1 1 0 011 1v14a1 1 0 01-1 1H6a1 1 0 01-1-1V3a1 1 0 011-1zm1.5 3.5V7h5V5.5h-5zm0 3.5v1.5h5V9h-5zm0 3.5V14h3v-1.5h-3z" />
+  ),
+  approvals: (
+    <path d="M10 1.8l7 3.1v4.6c0 4-2.9 7.3-7 8.7-4.1-1.4-7-4.7-7-8.7V4.9l7-3.1zm3.3 5.4l-4.2 4.2-2-2-1.3 1.3 3.3 3.3 5.5-5.5-1.3-1.3z" />
+  ),
   calendar: (
     <path d="M6 2v2H4.5A1.5 1.5 0 003 5.5v11A1.5 1.5 0 004.5 18h11a1.5 1.5 0 001.5-1.5v-11A1.5 1.5 0 0015.5 4H14V2h-1.5v2h-5V2H6zm-1.5 5.5h11v9h-11v-9zM7 9v1.5h1.5V9H7zm3.25 0v1.5h1.5V9h-1.5zm3.25 0v1.5H15V9h-1.5zM7 12v1.5h1.5V12H7zm3.25 0v1.5h1.5V12h-1.5z" />
   ),
@@ -38,6 +44,8 @@ const NAV = [
   { to: '/my-tasks', label: 'My Tasks', icon: ICON.tasks, roles: ['employee'] },
   { to: '/assistant', label: 'Ask HR', icon: ICON.assistant, roles: ['admin', 'hr', 'employee'] },
   { to: '/holidays', label: 'Holidays', icon: ICON.calendar, roles: ['admin', 'hr', 'employee'] },
+  { to: '/my-requests', label: 'My Requests', icon: ICON.requests, roles: ['admin', 'hr', 'employee'] },
+  { to: '/approvals', label: 'Approvals', icon: ICON.approvals, roles: ['admin', 'hr'] },
   { to: '/onboarding-rules', label: 'Rules', icon: ICON.rules, roles: ['admin', 'hr'] },
   { to: '/knowledge-base', label: 'Knowledge', icon: ICON.knowledge, roles: ['admin', 'hr'] },
   { to: '/reports', label: 'Reports', icon: ICON.reports, roles: ['admin', 'hr'] },

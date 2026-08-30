@@ -23,6 +23,8 @@ import KnowledgeBase from './pages/KnowledgeBase'
 import Notifications from './pages/Notifications'
 import Reports from './pages/Reports'
 import Holidays from './pages/Holidays'
+import MyRequests from './pages/MyRequests'
+import Approvals from './pages/Approvals'
 
 export default function App() {
   return (
@@ -45,6 +47,8 @@ export default function App() {
               <Route path="/notifications" element={<Notifications />} />
               {/* The calendar is company-wide reading; only editing is HR/Admin. */}
               <Route path="/holidays" element={<Holidays />} />
+              {/* Everyone submits their own requests — HR and Admin included. */}
+              <Route path="/my-requests" element={<MyRequests />} />
 
               <Route element={<RequireAuth roles={['employee']} />}>
                 <Route path="/my-onboarding" element={<MyOnboarding />} />
@@ -58,6 +62,7 @@ export default function App() {
                 <Route path="/employees/new" element={<EmployeeCreate />} />
                 <Route path="/employees/:id" element={<EmployeeDetail />} />
                 <Route path="/reports" element={<Reports />} />
+                <Route path="/approvals" element={<Approvals />} />
               </Route>
 
               <Route element={<RequireAuth roles={['admin']} />}>

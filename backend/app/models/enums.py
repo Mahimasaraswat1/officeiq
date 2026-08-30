@@ -124,7 +124,11 @@ class NotificationType(str, Enum):
     TASK_OVERDUE = "task_overdue"
     ONBOARDING_COMPLETE = "onboarding_complete"
 
+    REQUEST_APPROVED = "request_approved"
+    REQUEST_REJECTED = "request_rejected"
+
     # --- Reaches HR/Admin --------------------------------------------------
+    REQUEST_SUBMITTED = "request_submitted"
     DOCUMENT_UPLOADED = "document_uploaded"
     INVITATION_ACCEPTED = "invitation_accepted"
     VERIFICATION_FAILED = "verification_failed"
@@ -168,6 +172,24 @@ class HolidayType(str, Enum):
     COMPANY = "company"        # company-declared (founding day, shutdown)
 
 
+class RequestType(str, Enum):
+    """What kind of thing is being asked for.
+
+    Adding a type is an enum value plus a payload model in
+    app.services.requests — the submit/route/decide engine itself does not
+    change. LEAVE is the only one wired up so far.
+    """
+
+    LEAVE = "leave"
+
+
+class RequestStatus(str, Enum):
+    PENDING = "pending"      # awaiting a decision
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"  # withdrawn by the requester before a decision
+
+
 class AuditAction(str, Enum):
     """Actions written to the immutable audit log (PRD A.7.9)."""
 
@@ -197,6 +219,11 @@ class AuditAction(str, Enum):
     DOCUMENT_EXTRACTION_FAILED = "document_extraction_failed"
     DOCUMENT_REPROCESSED = "document_reprocessed"
     EXTRACTION_APPLIED = "extraction_applied"
+    # Requests & approvals
+    REQUEST_SUBMITTED = "request_submitted"
+    REQUEST_APPROVED = "request_approved"
+    REQUEST_REJECTED = "request_rejected"
+    REQUEST_CANCELLED = "request_cancelled"
     # Holiday calendar
     HOLIDAY_CREATED = "holiday_created"
     HOLIDAY_UPDATED = "holiday_updated"
