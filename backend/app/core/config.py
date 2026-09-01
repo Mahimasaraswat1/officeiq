@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 60
 
     # --- Email (Phase 1: console/file mock adapter) ------------------------
-    EMAIL_BACKEND: Literal["console", "file", "smtp"] = "file"
+    EMAIL_BACKEND: Literal["console", "file", "smtp", "brevo"] = "file"
     EMAIL_OUTBOX_DIR: str = "./outbox"
     EMAIL_FROM: str = "no-reply@officeiq.dev"
     EMAIL_FROM_NAME: str = "OfficeIQ"
@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     SMTP_USER: str | None = None
     SMTP_PASSWORD: str | None = None
     SMTP_USE_TLS: bool = True
+
+    # Brevo (HTTP API). Its SMTP relay needs a different credential entirely
+    # (xsmtpsib-), so the API key below only works with EMAIL_BACKEND=brevo.
+    BREVO_API_KEY: str | None = None
+    BREVO_TIMEOUT_SECONDS: float = 15.0
 
     # --- Document storage (Phase 2) ---------------------------------------
     # local = filesystem (no services needed) | s3 = S3-compatible (MinIO/AWS)

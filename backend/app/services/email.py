@@ -89,7 +89,60 @@ class SmtpEmailBackend(EmailBackend):
         logger.info("[email:smtp] sent to %s", message.to)
 
 
+class BrevoEmailBackend(EmailBackend):
+    """Delivery over Brevo's HTTP API rather than SMTP.
+
+    Chosen over the SMTP relay for two reasons. Brevo issues two different
+    credentials — an API key (xkeysib-) and a separate SMTP key (xsmtpsib-) —
+    and only the API key is in play here; the SMTP relay rejects it outright.
+    More usefully, many hosting platforms block outbound SMTP ports, so an
+    HTTPS call keeps working where smtplib silently times out.
+
+    Brevo will only send from a verified sender, so EMAIL_FROM has to be an
+    address confirmed in the Brevo dashboard — otherwise every send is
+    rejected with a 400 that names the sender.
+    """
+
+    ENDPOINT = "https://api.brevo.com/v3/smtp/email"
+
+    def __init__(self) -> None:
+        if not settings.BREVO_API_KEY:
+            raise RuntimeError("EMAIL_BACKEND=brevo requires BREVO_API_KEY to be set")
+
+    def send(self, message: OutgoingEmail) -> None:
+        import httpx
+
+        response = httpx.post(
+            self.ENDPOINT,
+            headers={
+                "api-key": settings.BREVO_API_KEY,
+                "content-type": "application/json",
+                "accept": "application/json",
+            },
+            json={
+                "sender": {
+                    "name": settings.EMAIL_FROM_NAME,
+                    "email": settings.EMAIL_FROM,
+                },
+                "to": [{"email": message.to}],
+                "subject": message.subject,
+                "textContent": message.body,
+            },
+            timeout=settings.BREVO_TIMEOUT_SECONDS,
+        )
+        if response.status_code >= 400:
+            # The body names the actual problem — usually an unverified sender
+            # or an exhausted daily quota. Losing it turns a fixable config
+            # mistake into "email doesn't work".
+            raise RuntimeError(
+                f"Brevo rejected the message ({response.status_code}): {response.text[:300]}"
+            )
+        logger.info("[email:brevo] sent to %s", message.to)
+
+
 def get_email_backend() -> EmailBackend:
+    if settings.EMAIL_BACKEND == "brevo":
+        return BrevoEmailBackend()
     if settings.EMAIL_BACKEND == "smtp":
         return SmtpEmailBackend()
     if settings.EMAIL_BACKEND == "console":

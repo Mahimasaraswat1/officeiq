@@ -389,3 +389,79 @@ def test_small_responses_are_not_compressed(client):
     """Below the threshold, compression costs more CPU than it saves bytes."""
     response = client.get("/health", headers={"Accept-Encoding": "gzip"})
     assert "content-encoding" not in response.headers
+
+
+# --- Brevo email backend -----------------------------------------------------
+
+
+def test_brevo_backend_requires_a_key(monkeypatch):
+    """Selecting the backend without a key must fail loudly at construction."""
+    from app.services.email import BrevoEmailBackend, settings as email_settings
+
+    monkeypatch.setattr(email_settings, "BREVO_API_KEY", None)
+    with pytest.raises(RuntimeError, match="BREVO_API_KEY"):
+        BrevoEmailBackend()
+
+
+def test_brevo_backend_posts_the_message_to_the_api(monkeypatch):
+    from app.services import email as email_mod
+
+    monkeypatch.setattr(email_mod.settings, "BREVO_API_KEY", "xkeysib-test")
+    monkeypatch.setattr(email_mod.settings, "EMAIL_FROM", "sender@example.com")
+    monkeypatch.setattr(email_mod.settings, "EMAIL_FROM_NAME", "OfficeIQ")
+
+    captured = {}
+
+    class _Response:
+        status_code = 201
+        text = ""
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["headers"] = kwargs["headers"]
+        captured["json"] = kwargs["json"]
+        return _Response()
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    email_mod.BrevoEmailBackend().send(
+        email_mod.OutgoingEmail(to="dest@example.com", subject="Hi", body="Body")
+    )
+
+    assert captured["url"].endswith("/v3/smtp/email")
+    assert captured["headers"]["api-key"] == "xkeysib-test"
+    assert captured["json"]["sender"]["email"] == "sender@example.com"
+    assert captured["json"]["to"] == [{"email": "dest@example.com"}]
+    assert captured["json"]["textContent"] == "Body"
+
+
+def test_brevo_rejection_surfaces_the_reason(monkeypatch):
+    """An unverified sender is the usual failure; the body says which one."""
+    from app.services import email as email_mod
+
+    monkeypatch.setattr(email_mod.settings, "BREVO_API_KEY", "xkeysib-test")
+
+    class _Response:
+        status_code = 400
+        text = '{"message":"Sender not valid: no-reply@officeiq.dev"}'
+
+    monkeypatch.setattr("httpx.post", lambda url, **kw: _Response())
+
+    with pytest.raises(RuntimeError, match="Sender not valid"):
+        email_mod.BrevoEmailBackend().send(
+            email_mod.OutgoingEmail(to="d@example.com", subject="s", body="b")
+        )
+
+
+def test_a_delivery_failure_never_breaks_the_calling_operation(monkeypatch):
+    """Sending an invitation must not fail because email delivery did."""
+    from app.services import email as email_mod
+
+    def explode(self, message):
+        raise RuntimeError("Brevo rejected the message (400)")
+
+    monkeypatch.setattr(email_mod.FileEmailBackend, "send", explode)
+    monkeypatch.setattr(email_mod.settings, "EMAIL_BACKEND", "file")
+
+    email_mod.send_email("someone@example.com", "Subject", "Body")  # must not raise
