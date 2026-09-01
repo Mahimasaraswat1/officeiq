@@ -1,16 +1,45 @@
 # OfficeIQ
 
-AI-Powered HR Onboarding Automation & Team Knowledge Hub.
-Implementation of the merged PRD (Part A — business/functional, Part B — development/production).
+**An HR onboarding platform with a retrieval-augmented assistant that answers company
+policy questions from your own handbook — and says "I don't know" when the handbook
+doesn't cover it.**
 
-**Current state: Phase 8 complete — all eight phases done.** Authentication, RBAC,
-employee profile CRUD, the onboarding invitation flow, document upload with OCR
-extraction and resume parsing, mock ID verification, face matching, the HR
-approve/reject workflow, a database-driven task/training assignment engine and digital
-checklist, a RAG chatbot answering policy questions from the company knowledge base, an
-analytics dashboard with global search and in-app notifications, Excel/PDF/CSV
-reporting with a filterable audit trail and session management, and a hardened,
-container-ready deployment with rate limiting, security headers and health probes.
+A full-stack application: React frontend, FastAPI backend, PostgreSQL with pgvector for
+semantic search, and a RAG pipeline over the company knowledge base. Built as an
+implementation of a two-part PRD (business/functional and development/production).
+
+### What it does
+
+New hires are invited by HR, upload their documents, have them OCR-extracted and
+verified, get a checklist assigned by rules HR controls in-app, and can ask the
+assistant questions about policy. HR sees an analytics dashboard, an approvals queue,
+and an audit trail of everything that happened.
+
+### What is worth looking at
+
+- **The assistant refuses to guess.** Answers are grounded in retrieved passages with
+  citations, gated on a similarity floor and a confidence threshold. When nothing
+  relevant is retrieved it escalates to HR rather than inventing a policy — and it
+  distinguishes "not in the handbook" from "the model call failed", because telling an
+  employee to go looking for a documentation gap that does not exist wastes their time.
+  See [Anti-hallucination guarantees](#anti-hallucination-guarantees).
+- **Providers are pluggable and degrade honestly.** Chat generation runs on Claude or
+  Groq, embeddings on Voyage. A missing key is refused at startup rather than silently
+  swapped for a fallback embedder — documents and queries in different vector spaces
+  return zero results while every health check still reads green.
+- **Assignment rules live in the database**, editable by HR in-app. Changing onboarding
+  policy does not require a deploy.
+- **Roughly 570 tests**, including adversarial ones: a migration suite that runs
+  `alembic upgrade head` against a throwaway database because the main suite builds its
+  schema from the models and would never catch a missing `ALTER TYPE`, and a static
+  check that no module reads the local calendar date, because the timezone bug it
+  guards against passes for nineteen hours a day.
+
+### Current state
+
+All eight PRD phases complete, plus two employee self-service modules: a company
+**Holiday Calendar** and a generic **Request & Approval Engine**. **Leave Application**
+is being built on top of the engine now. See the [roadmap](#roadmap) for the breakdown.
 
 ---
 
@@ -23,14 +52,14 @@ container-ready deployment with rate limiting, security headers and health probe
 | Database | PostgreSQL 16 + pgvector (via Docker Compose) |
 | Migrations | Alembic |
 | Auth | JWT access + refresh tokens, bcrypt hashing, RBAC middleware |
-| Email | Pluggable backend — `file` / `console` mock in dev, SMTP in production |
+| Email | Pluggable — `file`/`console` in dev, SMTP or Brevo's HTTP API in production |
 | Object storage | Pluggable — `local` filesystem or `s3` (MinIO locally, AWS S3 in prod) |
 | OCR | Self-hosted Tesseract via a pluggable engine interface |
 | PDF | PyMuPDF — uses an embedded text layer when present, rasterises + OCRs when not |
 | Face matching | OpenCV DNN (YuNet detector + SFace recogniser), behind a pluggable interface |
 | ID verification | Mock UIDAI/NSDL simulator — no government API is contacted in v1 |
 | Assignment rules | Stored in PostgreSQL and editable by HR in-app — no deploy to change policy |
-| Chatbot generation | Claude (`claude-opus-5`) via the Anthropic SDK, behind a pluggable interface |
+| Chatbot generation | Claude (`claude-opus-5`) or Groq (`openai/gpt-oss-120b`), behind one interface |
 | Embeddings | Voyage AI (`voyage-3`) — the Claude API has no embeddings endpoint |
 | Vector store | pgvector, in the same Postgres database as everything else |
 | Notifications | In-app inbox, written in the same transaction as the event; optional email |
@@ -161,8 +190,18 @@ App: <http://localhost:5173> (Vite proxies `/api` to the backend, so no CORS set
 |---|---|---|
 | Admin | `admin@officeiq.dev` | `Admin@12345` |
 | HR | `hr@officeiq.dev` | `Hr@123456` |
+| Employee | `employee@officeiq.dev` | `Employee@12345` |
 
-Change these before any shared or deployed environment.
+Sign in as the employee to see the other half of the product — onboarding, the
+checklist, the assistant, the holiday calendar and leave requests all look different
+from that side. HR is linked to an employee record too, which is what makes the
+self-approval guard visible: HR can submit a leave request, see it in the queue they
+work, and be unable to decide it.
+
+The seed is idempotent, so running it twice adds nothing.
+
+Change these before any shared or deployed environment — `production_problems()` refuses
+to start a production process that is still using the default admin password.
 
 ---
 
@@ -172,7 +211,13 @@ Change these before any shared or deployed environment.
 Open the newest file and follow the `accept-invite?token=…` link to complete registration as
 the invited employee — no mail server or API key required.
 
-Switch to real delivery by setting `EMAIL_BACKEND=smtp` plus the `SMTP_*` variables. No code changes.
+Switch to real delivery with either backend, no code changes:
+
+- `EMAIL_BACKEND=smtp` plus the `SMTP_*` variables.
+- `EMAIL_BACKEND=brevo` plus `BREVO_API_KEY`. Delivery goes over HTTPS rather than SMTP,
+  which matters because many hosting platforms block outbound SMTP ports. Note this is
+  Brevo's API key (`xkeysib-`), not its separate SMTP key — the relay rejects the API
+  key. `EMAIL_FROM` must be a sender verified in the Brevo dashboard.
 
 ---
 
@@ -778,7 +823,7 @@ All routes are under `/api/v1`. Every error uses one envelope:
 
 ---
 
-## Roadmap (PRD A.12)
+## Roadmap
 
 | Phase | Scope | Status |
 |---|---|---|
@@ -790,3 +835,34 @@ All routes are under `/api/v1`. Every error uses one envelope:
 | 6 | HR dashboard, analytics, search, notifications | ✅ Complete |
 | 7 | Reports (Excel/PDF), audit logs, profile polish | ✅ Complete |
 | 8 | Hardening: security review, performance, integration readiness | ✅ Complete |
+
+### Employee self-service modules
+
+Built after the PRD phases, on the same foundations.
+
+| Module | Scope | Status |
+|---|---|---|
+| Holiday Calendar | Company holiday list, HR-managed, upcoming highlighted | ✅ Complete |
+| Request & Approval Engine | Generic submit → route → decide, pluggable request types | ✅ Complete |
+| Leave Application | Balances, accrual and deduction, built on the request engine | 🚧 In progress |
+| Rewards & Recognition | — | Not started |
+| Goals & Achievements | — | Not started |
+| Payslip (read-only) | — | Not started |
+
+#### How a new request type is added
+
+The engine never branches on request type. Adding one — WFH, equipment, expenses — is:
+
+1. a value on `RequestType`
+2. a payload model registered with `@payload_for(RequestType.X)`
+3. a form component
+
+`submit`, `approve`, `reject` and `cancel` are untouched. The alternative considered was
+a database-driven form builder, which buys a new type without a migration at the cost of
+a dynamic form renderer and the loss of typed validation — not worth it for a small,
+known set of types.
+
+Requests carry an `assigned_to_id` that is currently always null, meaning the HR/Admin
+pool. There is no manager role and `Employee.reporting_manager` is free text, so there
+is nobody specific to route to; when a hierarchy exists, one function changes and
+nothing downstream has to know.
