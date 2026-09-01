@@ -21,7 +21,14 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, text
 
-from app.models.enums import ChatOutcome, NotificationType
+from app.models.enums import (
+    ChatOutcome,
+    HolidayType,
+    LeaveKind,
+    NotificationType,
+    RequestStatus,
+    RequestType,
+)
 
 TEST_URL = os.getenv("TEST_DATABASE_URL", "")
 pytestmark = pytest.mark.skipif(
@@ -98,6 +105,10 @@ def _enum_values(url: str, type_name: str) -> set[str]:
 DB_BACKED_ENUMS = [
     ("notification_type", NotificationType),
     ("chat_outcome", ChatOutcome),
+    ("leave_kind", LeaveKind),
+    ("request_type", RequestType),
+    ("request_status", RequestStatus),
+    ("holiday_type", HolidayType),
 ]
 
 
@@ -128,4 +139,4 @@ def test_migrations_create_the_request_and_holiday_tables(migrated_url):
             )
     finally:
         engine.dispose()
-    assert {"holidays", "requests"} <= present
+    assert {"holidays", "requests", "leave_balances"} <= present
