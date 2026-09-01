@@ -51,9 +51,15 @@ COPY --chown=officeiq:officeiq alembic ./alembic
 COPY --chown=officeiq:officeiq scripts ./scripts
 COPY --chown=officeiq:officeiq app ./app
 
-# Face-recognition models are fetched at build time with pinned checksums
-# rather than baked into git — see scripts/download_face_models.py.
-RUN mkdir -p /app/models /app/storage && chown -R officeiq:officeiq /app/models /app/storage
+# Face-recognition models, fetched at build time with pinned checksums rather
+# than baked into git (SFace is ~37 MB). The comment here used to claim this
+# happened while only the directory was created, so every container fell back
+# to the stub matcher — and because FACE_MATCHER=stub is a production problem,
+# /health/ready then returned 503 and a platform would call the deploy
+# unhealthy for a reason that looked nothing like a missing file.
+RUN mkdir -p /app/models /app/storage \
+    && python scripts/download_face_models.py \
+    && chown -R officeiq:officeiq /app/models /app/storage
 
 USER officeiq
 
