@@ -88,7 +88,47 @@ SERVICE_ERROR_MESSAGE = (
 
 # Retained so existing imports keep working; the no-context text is the one
 # that carried this name.
+SMALL_TALK_MESSAGE = (
+    "Hello! I answer questions from the company handbook — things like annual and "
+    "sick leave, working hours and remote work, payroll and payslips, benefits, IT "
+    "equipment and access, onboarding, and the code of conduct.\n\n"
+    "Ask me something like \u201cHow many days of annual leave do I get?\u201d and I\u2019ll quote "
+    "the policy it comes from. If it isn\u2019t in the handbook I\u2019ll say so rather than guess."
+)
+
 ESCALATION_MESSAGE = NO_CONTEXT_MESSAGE
+
+
+# Openers that carry no question. Matched only when the whole message is one of
+# them, so "hi, how much leave do I get?" still goes to retrieval — the check is
+# for messages that are *nothing but* a greeting.
+_SMALL_TALK = frozenset(
+    {
+        "hi", "hii", "hiii", "hey", "heya", "hello", "helo", "yo",
+        "hi there", "hey there", "hello there",
+        "good morning", "good afternoon", "good evening", "morning", "evening",
+        "greetings", "howdy", "sup", "hola", "namaste",
+        "thanks", "thank you", "thanks!", "thank you!", "ty", "thx",
+        "cheers", "ok", "okay", "cool", "nice", "great", "got it",
+        "bye", "goodbye", "see you", "good night",
+        "how are you", "how are you?", "who are you", "who are you?",
+        "what can you do", "what can you do?", "help", "test", "testing",
+    }
+)
+
+
+def is_small_talk(question: str) -> bool:
+    """Is this a greeting rather than a question?
+
+    Deliberately a fixed list and an exact match after normalisation, not a
+    model call or a fuzzy rule. A false positive here is far worse than a false
+    negative: it would swallow a real question and answer it with a menu. Any
+    message that is not *exactly* one of these still goes through retrieval and
+    the normal grounding path.
+    """
+    cleaned = question.strip().lower().rstrip("!.?,")
+    cleaned = " ".join(cleaned.split())
+    return cleaned in _SMALL_TALK or cleaned.rstrip("!.?,") in _SMALL_TALK
 
 
 def build_context_block(chunks: list[RetrievedChunk]) -> str:
@@ -458,6 +498,15 @@ def answer_question(
     history: list[dict] | None = None,
 ) -> ChatAnswer:
     """Generate a grounded answer, escalating when context is missing."""
+    # A greeting is not a question. Sending "hi" to HR was the single most
+    # likely first impression of this assistant, and the worst one.
+    if is_small_talk(question):
+        return ChatAnswer(
+            text=SMALL_TALK_MESSAGE,
+            outcome=ChatOutcome.SMALL_TALK,
+            confidence=0.0,
+            escalated=False,
+        )
     if not chunks:
         return ChatAnswer(
             text=NO_CONTEXT_MESSAGE,

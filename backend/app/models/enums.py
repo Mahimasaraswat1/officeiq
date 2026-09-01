@@ -106,6 +106,10 @@ class ChatOutcome(str, Enum):
     ESCALATED_LOW_CONFIDENCE = "escalated_low_confidence"
     ESCALATED_NO_CONTEXT = "escalated_no_context"   # nothing relevant retrieved
     ERROR = "error"
+    # A greeting or thanks — not a question, so it is neither answered nor
+    # escalated. Counting it either way would distort the resolution rate, so
+    # it is excluded from that KPI entirely.
+    SMALL_TALK = "small_talk"
 
 
 class NotificationType(str, Enum):

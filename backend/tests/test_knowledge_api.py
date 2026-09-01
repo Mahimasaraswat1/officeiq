@@ -432,3 +432,84 @@ def test_analytics_reports_the_resolution_rate(client, hr_headers, employee_head
 
 def test_analytics_is_hr_only(client, employee_headers):
     assert client.get(f"{API}/chat/analytics", headers=employee_headers).status_code == 403
+
+
+# --- Small talk and retrieval outages ----------------------------------------
+
+
+def test_a_greeting_gets_a_capability_reply_over_the_api(client, employee_headers):
+    """"hi" is the most likely first message; it must not read as a dead end."""
+    response = client.post(
+        f"{API}/chat/ask", json={"question": "hi"}, headers=employee_headers
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["outcome"] == "small_talk"
+    assert body["escalated"] is False
+    assert "HR team" not in body["answer"]
+    assert "annual" in body["answer"].lower()  # names what it can actually do
+
+
+def test_greetings_do_not_count_towards_the_resolution_rate(
+    client, employee_headers, hr_headers
+):
+    """A greeting is not a question, so it belongs in neither half of the ratio."""
+    before = client.get(f"{API}/chat/analytics", headers=hr_headers).json()
+
+    client.post(f"{API}/chat/ask", json={"question": "hi"}, headers=employee_headers)
+    client.post(f"{API}/chat/ask", json={"question": "thanks"}, headers=employee_headers)
+
+    after = client.get(f"{API}/chat/analytics", headers=hr_headers).json()
+    assert after["questions_total"] == before["questions_total"]
+    assert after["resolution_rate"] == before["resolution_rate"]
+    assert "small_talk" not in after["escalations_by_reason"]
+
+
+def test_a_rate_limited_embedder_reports_a_technical_problem_not_a_500(
+    client, employee_headers, monkeypatch
+):
+    """The free embedding tier caps at 3 req/min, and it is hit by ordinary use.
+
+    Before this was handled the employee got a raw 500 and the cause was lost;
+    now they get the outage message and the reason is persisted for whoever has
+    to fix it.
+    """
+    from app.services.embeddings import EmbeddingError
+
+    def explode(*args, **kwargs):
+        raise EmbeddingError("Voyage embedding failed: rate limit exceeded")
+
+    monkeypatch.setattr("app.api.v1.chat.retrieve", explode)
+
+    response = client.post(
+        f"{API}/chat/ask",
+        json={"question": "How many annual leave days do I get?"},
+        headers=employee_headers,
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["outcome"] == "error"
+    assert "technical problem" in body["answer"]
+    assert "handbook" not in body["answer"].split("technical problem")[0]
+
+
+def test_a_retrieval_outage_records_the_real_reason(client, db, employee_headers, monkeypatch):
+    from sqlalchemy import select
+
+    from app.models.knowledge import ChatMessage
+    from app.services.embeddings import EmbeddingError
+
+    def explode(*args, **kwargs):
+        raise EmbeddingError("Voyage embedding failed: rate limit exceeded")
+
+    monkeypatch.setattr("app.api.v1.chat.retrieve", explode)
+    client.post(
+        f"{API}/chat/ask",
+        json={"question": "How many annual leave days do I get?"},
+        headers=employee_headers,
+    )
+
+    stored = db.scalars(
+        select(ChatMessage.error_message).where(ChatMessage.error_message.is_not(None))
+    ).all()
+    assert any("rate limit" in (e or "") for e in stored)

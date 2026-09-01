@@ -113,10 +113,13 @@ function Bubble({ message }) {
         {message.escalated ? (
           <p className="mt-2 text-xs opacity-80">{escalationStyle(message).note}</p>
         ) : (
-          message.confidence != null && (
-            <div className="mt-2">
-              <ConfidenceBadge value={message.confidence} />
-            </div>
+            // Small talk carries no confidence — it never went near retrieval.
+            // Rendering the 0% badge there made a working reply look broken.
+            message.confidence != null &&
+            message.outcome !== 'small_talk' && (
+              <div className="mt-2">
+                <ConfidenceBadge value={message.confidence} />
+              </div>
           )
         )}
 

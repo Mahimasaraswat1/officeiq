@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import uuid
 
 from fastapi import APIRouter, Depends, Query, Request, status
@@ -22,9 +24,12 @@ from app.schemas.knowledge import (
     ConversationRead,
 )
 from app.services.audit import record_audit
-from app.services.chat import answer_question
+from app.services.chat import ChatAnswer, SERVICE_ERROR_MESSAGE, answer_question
+from app.services.embeddings import EmbeddingError
 from app.services.notifications import notify_chat_escalated
 from app.services.retrieval import retrieve
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["AI Assistant"])
 
@@ -104,8 +109,23 @@ def ask(
         if not (m.role is ChatRole.USER and m.content == payload.question)
     ][-HISTORY_TURNS:]
 
-    chunks = retrieve(db, payload.question, category=payload.category)
-    result = answer_question(payload.question, chunks, history)
+    # Retrieval reaches an external embedding API, so it can fail for reasons
+    # that have nothing to do with the question — the free tier's 3 req/min cap
+    # is the one that actually bites. Without this the employee gets a raw 500
+    # instead of the "temporarily unavailable" message, and the cause is lost.
+    try:
+        chunks = retrieve(db, payload.question, category=payload.category)
+    except EmbeddingError as exc:
+        logger.exception("Retrieval failed for a chat question")
+        result = ChatAnswer(
+            text=SERVICE_ERROR_MESSAGE,
+            outcome=ChatOutcome.ERROR,
+            confidence=0.0,
+            escalated=True,
+            error=f"retrieval failed: {exc}",
+        )
+    else:
+        result = answer_question(payload.question, chunks, history)
 
     assistant_message = ChatMessage(
         conversation_id=conversation.id,
@@ -236,6 +256,10 @@ def analytics(db: DbSession, _: HrUser) -> ChatAnalytics:
     ).all()
 
     counts = {outcome.value: count for outcome, count, _ in rows}
+    # Greetings are not questions. Counting them as answered would inflate the
+    # resolution rate; counting them as escalations would understate it. They
+    # leave the denominator entirely.
+    counts.pop(ChatOutcome.SMALL_TALK.value, None)
     total = sum(counts.values())
     answered = counts.get(ChatOutcome.ANSWERED.value, 0)
     escalated = total - answered

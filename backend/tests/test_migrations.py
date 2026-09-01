@@ -21,7 +21,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, text
 
-from app.models.enums import NotificationType
+from app.models.enums import ChatOutcome, NotificationType
 
 TEST_URL = os.getenv("TEST_DATABASE_URL", "")
 pytestmark = pytest.mark.skipif(
@@ -91,18 +91,25 @@ def _enum_values(url: str, type_name: str) -> set[str]:
         engine.dispose()
 
 
-def test_migrations_create_every_notification_type(migrated_url):
-    """A NotificationType the migrated enum lacks is a guaranteed 500 in prod.
+# Every Python enum that is also a Postgres enum type. Autogenerate does not
+# detect values added to an existing type, so each of these needs an ALTER TYPE
+# written by hand — and this table is what makes forgetting one a test failure
+# rather than a production 500.
+DB_BACKED_ENUMS = [
+    ("notification_type", NotificationType),
+    ("chat_outcome", ChatOutcome),
+]
 
-    Alembic's autogenerate does not detect values added to an existing enum, so
-    adding one to NotificationType also means writing an ALTER TYPE by hand.
-    This is the test that says so.
-    """
-    in_db = _enum_values(migrated_url, "notification_type")
-    missing = sorted({t.value for t in NotificationType} - in_db)
+
+@pytest.mark.parametrize("type_name,python_enum", DB_BACKED_ENUMS)
+def test_migrations_create_every_enum_value(migrated_url, type_name, python_enum):
+    """A value the migrated enum lacks is a guaranteed 500 in production."""
+    in_db = _enum_values(migrated_url, type_name)
+    assert in_db, f"{type_name} does not exist after `alembic upgrade head`"
+    missing = sorted({m.value for m in python_enum} - in_db)
     assert not missing, (
-        f"NotificationType values missing after `alembic upgrade head`: {missing}. "
-        "Add `ALTER TYPE notification_type ADD VALUE ...` to a migration."
+        f"{python_enum.__name__} values missing after `alembic upgrade head`: "
+        f"{missing}. Add `ALTER TYPE {type_name} ADD VALUE ...` to a migration."
     )
 
 

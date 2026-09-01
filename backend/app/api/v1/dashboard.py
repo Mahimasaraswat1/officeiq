@@ -144,6 +144,8 @@ def summary(
             .group_by(ChatMessage.outcome)
         ).all()
     )
+    # Greetings are not questions; they belong in neither half of this ratio.
+    chat_rows.pop(ChatOutcome.SMALL_TALK, None)
     questions_total = sum(chat_rows.values())
     answered = chat_rows.get(ChatOutcome.ANSWERED, 0)
 

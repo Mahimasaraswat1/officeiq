@@ -296,3 +296,75 @@ def test_index_mismatch_is_reported_when_documents_use_another_embedder(db):
     document.embedding_model = "local:n/a"
     db.commit()
     assert document.title not in [title for title, _ in index_mismatches(db)]
+
+
+# --- Small talk --------------------------------------------------------------
+# "hi" used to be sent through retrieval, match nothing, and be answered with
+# "contact your HR team" — the most likely first message to this assistant, and
+# the worst possible reply to it.
+
+
+@pytest.mark.parametrize(
+    "message",
+    ["hi", "Hi!", "  HELLO  ", "hey there", "good morning", "thanks", "what can you do?"],
+)
+def test_greetings_are_recognised_as_small_talk(message):
+    from app.services.chat import is_small_talk
+
+    assert is_small_talk(message) is True
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "hi, how much leave do I get?",
+        "How many days of annual leave am I entitled to?",
+        "help me understand the leave policy",
+        "hello world documentation",
+    ],
+)
+def test_real_questions_are_never_treated_as_small_talk(message):
+    """A false positive swallows a real question, so the check must stay tight."""
+    from app.services.chat import is_small_talk
+
+    assert is_small_talk(message) is False
+
+
+def test_a_greeting_gets_a_capability_reply_not_an_hr_escalation():
+    from app.services.chat import SMALL_TALK_MESSAGE, answer_question
+
+    result = answer_question("hi", [])
+    assert result.outcome is ChatOutcome.SMALL_TALK
+    assert result.escalated is False
+    assert result.text == SMALL_TALK_MESSAGE
+    assert "HR team" not in result.text
+
+
+def test_a_greeting_skips_retrieval_entirely():
+    """Even with chunks available, small talk must not produce a grounded answer."""
+    from app.services.chat import answer_question
+
+    chunk = RetrievedChunk(
+        chunk_id="c1",
+        document_id="d1",
+        document_title="Annual Leave Policy",
+        source_reference=None,
+        category="leave",
+        heading="ENTITLEMENT",
+        content="Employees get 21 days.",
+        chunk_index=0,
+        similarity=0.9,
+    )
+    result = answer_question("hi", [chunk])
+    assert result.outcome is ChatOutcome.SMALL_TALK
+    assert not result.citations
+
+
+def test_a_real_question_with_no_context_still_escalates():
+    """The small-talk path must not have swallowed the no-context path."""
+    from app.services.chat import NO_CONTEXT_MESSAGE, answer_question
+
+    result = answer_question("What is the policy on space travel?", [])
+    assert result.outcome is ChatOutcome.ESCALATED_NO_CONTEXT
+    assert result.text == NO_CONTEXT_MESSAGE
+    assert result.escalated is True
