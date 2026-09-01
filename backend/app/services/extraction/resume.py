@@ -14,6 +14,7 @@ from datetime import date
 
 from app.services.extraction.fields import EMAIL_RE, PHONE_RE
 from app.services.ocr.base import OcrResult
+from app.core.security import today_utc
 
 # --- Section detection -----------------------------------------------------
 
@@ -176,7 +177,7 @@ def _parse_education(lines: list[str]) -> list[dict]:
 def _parse_experience(lines: list[str]) -> tuple[list[dict], float | None]:
     entries: list[dict] = []
     total_years = 0.0
-    current_year = date.today().year
+    current_year = today_utc().year
 
     for line in lines:
         range_match = YEAR_RANGE_RE.search(line)

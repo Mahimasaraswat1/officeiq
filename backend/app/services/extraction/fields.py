@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from app.services.ocr.base import OcrResult
+from app.core.security import today_utc
 
 # --- Patterns --------------------------------------------------------------
 
@@ -141,7 +142,7 @@ def parse_date(raw: str) -> date | None:
         except ValueError:
             continue
         # Reject implausible dates rather than storing OCR noise.
-        if date(1900, 1, 1) <= parsed <= date.today():
+        if date(1900, 1, 1) <= parsed <= today_utc() + timedelta(days=1):
             return parsed
     return None
 

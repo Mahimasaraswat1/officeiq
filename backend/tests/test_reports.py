@@ -10,7 +10,7 @@ import pytest
 from openpyxl import load_workbook
 from sqlalchemy import select
 
-from app.core.security import utcnow
+from app.core.security import utcnow, today_utc
 from app.models.audit import AuditLog
 from app.models.employee import Employee
 from app.models.enums import AuditAction, OnboardingStatus, TaskStatus
@@ -241,7 +241,7 @@ def test_task_completion_lists_the_worst_performer_first(client, hr_headers, db)
                      status=TaskStatus.COMPLETED),
         EmployeeTask(employee_id=rohit, title="C", category="task",
                      status=TaskStatus.PENDING,
-                     due_date=date.today() - timedelta(days=4)),
+                     due_date=today_utc() - timedelta(days=4)),
     ])
     db.commit()
 

@@ -19,7 +19,7 @@ from typing import Callable
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.security import utcnow
+from app.core.security import utcnow, today_utc
 from app.models.audit import AuditLog
 from app.models.document import Document
 from app.models.employee import Employee
@@ -282,7 +282,7 @@ def task_completion(
         .order_by(Employee.first_name)
     ).all()
 
-    today = date.today()
+    today = today_utc()
     rows = []
     for employee in employees:
         tasks = db.scalars(

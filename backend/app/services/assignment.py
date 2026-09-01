@@ -19,7 +19,7 @@ from datetime import date, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.security import utcnow
+from app.core.security import utcnow, today_utc
 from app.models.document import Document
 from app.models.employee import Employee
 from app.models.enums import (
@@ -146,7 +146,7 @@ def _due_date_for(employee: Employee, due_days: int | None) -> date | None:
     if due_days is None:
         return None
     # Relative to joining where known, otherwise to the assignment date.
-    anchor = employee.date_of_joining or date.today()
+    anchor = employee.date_of_joining or today_utc()
     return anchor + timedelta(days=due_days)
 
 
@@ -308,7 +308,7 @@ def compute_progress(db: Session, employee_id) -> TaskProgress:
     ).all()
 
     progress = TaskProgress(total=len(tasks))
-    today = date.today()
+    today = today_utc()
     for task in tasks:
         if task.status is TaskStatus.COMPLETED:
             progress.completed += 1

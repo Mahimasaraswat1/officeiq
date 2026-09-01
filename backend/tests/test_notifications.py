@@ -15,6 +15,7 @@ from app.models.enums import NotificationType, TaskStatus
 from app.models.notification import Notification
 from app.models.task import EmployeeTask
 from app.services.notifications import run_task_reminders
+from app.core.security import today_utc
 from tests.conftest import API
 from tests.factories import (
     AADHAAR_TEXT,
@@ -380,7 +381,7 @@ def _add_task(db, employee_id: str, *, title: str, due: date) -> EmployeeTask:
 
 def test_reminders_flag_overdue_and_due_soon(client, hr_headers, employee_headers, db, employee_id):
     employee = db.scalar(select(Employee).where(Employee.work_email == EMPLOYEE["work_email"]))
-    today = date.today()
+    today = today_utc()
     _add_task(db, employee.id, title="Sign the policy", due=today - timedelta(days=2))
     _add_task(db, employee.id, title="Book induction", due=today + timedelta(days=1))
     # Comfortably outside the due-soon horizon.
@@ -398,7 +399,7 @@ def test_reminders_flag_overdue_and_due_soon(client, hr_headers, employee_header
 
 def test_reminders_are_idempotent_while_unread(client, hr_headers, db, employee_id, employee_headers):
     employee = db.scalar(select(Employee).where(Employee.work_email == EMPLOYEE["work_email"]))
-    _add_task(db, employee.id, title="Sign the policy", due=date.today() - timedelta(days=2))
+    _add_task(db, employee.id, title="Sign the policy", due=today_utc() - timedelta(days=2))
 
     first = client.post(f"{API}/notifications/run-reminders", headers=hr_headers).json()
     second = client.post(f"{API}/notifications/run-reminders", headers=hr_headers).json()
@@ -410,7 +411,7 @@ def test_reminders_are_idempotent_while_unread(client, hr_headers, db, employee_
 
 def test_reminders_skip_closed_tasks(db, employee_id, client, hr_headers):
     employee = db.scalar(select(Employee).where(Employee.work_email == EMPLOYEE["work_email"]))
-    task = _add_task(db, employee.id, title="Done already", due=date.today() - timedelta(days=5))
+    task = _add_task(db, employee.id, title="Done already", due=today_utc() - timedelta(days=5))
     task.status = TaskStatus.COMPLETED
     db.commit()
 

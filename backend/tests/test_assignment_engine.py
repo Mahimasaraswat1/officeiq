@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.models.employee import Employee
 from app.models.enums import DocumentType, TaskCategory, TaskStatus
 from app.models.task import AssignmentRule, AssignmentRuleItem, EmployeeTask, TaskTemplate
+from app.core.security import today_utc
 from app.services.assignment import (
     assign_tasks,
     compute_progress,
@@ -250,7 +251,7 @@ def test_due_date_falls_back_to_today_without_a_joining_date(db):
     db.commit()
 
     task = db.scalar(select(EmployeeTask))
-    assert task.due_date == date.today() + timedelta(days=5)
+    assert task.due_date == today_utc() + timedelta(days=5)
 
 
 def test_template_without_due_days_produces_no_due_date(db):
@@ -364,7 +365,7 @@ def test_overdue_tasks_are_counted(db):
     template = make_template(db, "T", default_due_days=0)
     make_rule(db, "All", [template])
     employee = make_employee(
-        db, work_email="e@example.com", date_of_joining=date.today() - timedelta(days=10)
+        db, work_email="e@example.com", date_of_joining=today_utc() - timedelta(days=10)
     )
     assign_tasks(db, employee=employee)
     db.commit()

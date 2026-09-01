@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.security import utcnow
+from app.core.security import utcnow, today_utc
 from app.models.document import Document
 from app.models.employee import Employee
 from app.models.enums import (
@@ -336,7 +336,7 @@ def run_task_reminders(db: Session, *, today: date | None = None) -> dict[str, i
     Idempotent by way of `notify_once`, so a scheduler may call this as often as
     it likes. Returns per-type counts of what was actually created.
     """
-    today = today or date.today()
+    today = today or today_utc()
     horizon = today + timedelta(days=settings.TASK_DUE_SOON_DAYS)
 
     open_tasks = db.scalars(

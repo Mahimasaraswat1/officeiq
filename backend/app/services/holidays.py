@@ -1,9 +1,7 @@
 """Holiday calendar queries and the derived fields the UI reads.
 
-"Today" is taken from utcnow().date() throughout, matching the dashboard rather
-than EmployeeTask.is_overdue()'s date.today(). The two disagree by a day for
-several hours each night in a +05:30 tz; picking one here keeps a holiday from
-being "upcoming" on one screen and "past" on another.
+"Today" comes from app.core.security.today_utc(), the app-wide definition, so a
+holiday cannot be "upcoming" on one screen and "past" on another.
 """
 
 from __future__ import annotations
@@ -14,7 +12,7 @@ from datetime import date
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
-from app.core.security import utcnow
+from app.core.security import today_utc
 from app.models.enums import HolidayType
 from app.models.holiday import Holiday
 from app.schemas.holiday import HolidayRead, HolidayYearSummary
@@ -31,7 +29,8 @@ WEEKDAYS = (
 
 
 def today() -> date:
-    return utcnow().date()
+    """Kept as a local name for readability; the definition lives in one place."""
+    return today_utc()
 
 
 def _base_query(*, year: int | None, include_inactive: bool) -> Select:

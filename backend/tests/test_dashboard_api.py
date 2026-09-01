@@ -8,7 +8,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from app.core.config import settings
-from app.core.security import utcnow
+from app.core.security import utcnow, today_utc
 from app.models.employee import Employee
 from app.models.enums import OnboardingStatus, TaskStatus
 from app.models.task import EmployeeTask
@@ -116,7 +116,7 @@ def test_summary_reports_document_and_task_state(client, hr_headers, db):
         EmployeeTask(employee_id=employee_id, title="Done", category="task",
                      status=TaskStatus.COMPLETED),
         EmployeeTask(employee_id=employee_id, title="Late", category="task",
-                     status=TaskStatus.PENDING, due_date=date.today() - timedelta(days=3)),
+                     status=TaskStatus.PENDING, due_date=today_utc() - timedelta(days=3)),
     ])
     db.commit()
 
@@ -156,7 +156,7 @@ def test_summary_chat_rate_matches_chat_analytics(client, hr_headers):
 
 
 def test_joining_soon_counts_only_the_next_30_days(client, hr_headers):
-    today = date.today()
+    today = today_utc()
     create_employee(client, hr_headers, date_of_joining=str(today + timedelta(days=5)))
     create_employee(client, hr_headers, work_email="far@example.com",
                     date_of_joining=str(today + timedelta(days=90)))
@@ -222,7 +222,7 @@ def test_trends_return_one_point_per_day_including_quiet_ones(client, hr_headers
     assert len(body["points"]) == 7
     # Days with no activity are present with zeros, so a chart has no gaps.
     assert body["points"][0]["profiles_created"] == 0
-    assert body["points"][-1]["date"] == date.today().isoformat()
+    assert body["points"][-1]["date"] == today_utc().isoformat()
     assert body["points"][-1]["profiles_created"] == 1
 
 
@@ -293,7 +293,7 @@ def test_attention_surfaces_failed_verifications(client, hr_headers):
 
 def test_attention_orders_overdue_tasks_worst_first(client, hr_headers, db):
     employee_id = create_employee(client, hr_headers)
-    today = date.today()
+    today = today_utc()
     db.add_all([
         EmployeeTask(employee_id=employee_id, title="Slightly late", category="task",
                      status=TaskStatus.PENDING, due_date=today - timedelta(days=1)),
@@ -340,7 +340,7 @@ def test_attention_reports_the_true_total_beyond_the_display_cap(client, hr_head
     employee_id = create_employee(client, hr_headers)
     db.add_all([
         EmployeeTask(employee_id=employee_id, title=f"Late {i}", category="task",
-                     status=TaskStatus.PENDING, due_date=date.today() - timedelta(days=i + 1))
+                     status=TaskStatus.PENDING, due_date=today_utc() - timedelta(days=i + 1))
         for i in range(6)
     ])
     db.commit()

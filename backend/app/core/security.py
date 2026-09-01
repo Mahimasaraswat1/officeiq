@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 
 import bcrypt
@@ -21,6 +21,19 @@ MAX_PASSWORD_BYTES = 72
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def today_utc() -> date:
+    """Today's date in UTC — the single definition of "today" for this app.
+
+    Two definitions used to coexist: date.today() (the server's local zone) in
+    task overdue checks, reminders, assignment and reports, and utcnow().date()
+    on the dashboard. In any zone offset from UTC they disagree for part of
+    every day — 05:30 nightly at +05:30 — so a task could be overdue on one
+    screen and not on another, and the test suite failed only between midnight
+    and dawn. Everything that needs a calendar day goes through here.
+    """
+    return utcnow().date()
 
 
 # --- Passwords -------------------------------------------------------------

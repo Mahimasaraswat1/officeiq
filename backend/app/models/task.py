@@ -28,6 +28,7 @@ from app.core.types import TZDateTime
 from app.models.employee import Employee
 from app.models.enums import DocumentType, TaskCategory, TaskStatus
 from app.models.user import User
+from app.core.security import today_utc
 
 task_category_enum = SAEnum(
     TaskCategory, name="task_category", values_callable=lambda e: [m.value for m in e]
@@ -242,7 +243,7 @@ class EmployeeTask(Base):
     def is_overdue(self, today: date | None = None) -> bool:
         if self.is_closed or self.due_date is None:
             return False
-        return self.due_date < (today or date.today())
+        return self.due_date < (today or today_utc())
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"<EmployeeTask {self.title!r} {self.status.value}>"

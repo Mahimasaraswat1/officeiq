@@ -7,7 +7,7 @@ from datetime import date, timedelta
 
 from sqlalchemy import select
 
-from app.core.security import utcnow
+from app.core.security import utcnow, today_utc
 from app.models.audit import AuditLog
 from app.models.enums import AuditAction
 from app.models.user import RefreshToken, User
@@ -70,7 +70,7 @@ def test_filter_by_entity(client, admin_headers, hr_headers):
 def test_date_range_includes_the_whole_end_day(client, admin_headers, hr_headers):
     """A range ending 'today' must include entries written later today."""
     client.post(f"{API}/employees", json=EMPLOYEE, headers=hr_headers)
-    today = date.today()
+    today = today_utc()
 
     body = client.get(
         f"{API}/audit-logs",
