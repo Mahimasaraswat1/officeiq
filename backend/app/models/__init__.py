@@ -15,6 +15,7 @@ from app.models.enums import (
     InvitationStatus,
     KnowledgeCategory,
     KnowledgeStatus,
+    LeaveKind,
     NotificationType,
     OnboardingStatus,
     RequestStatus,
@@ -26,6 +27,7 @@ from app.models.enums import (
     VerificationStatus,
 )
 from app.models.holiday import Holiday
+from app.models.leave import LeaveBalance
 from app.models.knowledge import (
     ChatConversation,
     ChatMessage,
@@ -66,6 +68,8 @@ __all__ = [
     "Request",
     "RequestStatus",
     "RequestType",
+    "LeaveBalance",
+    "LeaveKind",
     "Invitation",
     "InvitationStatus",
     "KnowledgeCategory",

@@ -37,9 +37,9 @@ and an audit trail of everything that happened.
 
 ### Current state
 
-All eight PRD phases complete, plus two employee self-service modules: a company
-**Holiday Calendar** and a generic **Request & Approval Engine**. **Leave Application**
-is being built on top of the engine now. See the [roadmap](#roadmap) for the breakdown.
+All eight PRD phases complete, plus three employee self-service modules: a company
+**Holiday Calendar**, a generic **Request & Approval Engine**, and **Leave Application**
+built on top of it. See the [roadmap](#roadmap) for the breakdown.
 
 ---
 
@@ -844,10 +844,29 @@ Built after the PRD phases, on the same foundations.
 |---|---|---|
 | Holiday Calendar | Company holiday list, HR-managed, upcoming highlighted | ✅ Complete |
 | Request & Approval Engine | Generic submit → route → decide, pluggable request types | ✅ Complete |
-| Leave Application | Balances, accrual and deduction, built on the request engine | 🚧 In progress |
+| Leave Application | Balances, accrual and deduction, built on the request engine | ✅ Complete |
 | Rewards & Recognition | — | Not started |
 | Goals & Achievements | — | Not started |
 | Payslip (read-only) | — | Not started |
+
+#### Leave entitlements come from the handbook
+
+The Annual Leave Policy and Sick Leave documents in the knowledge base define 21 days
+annual (accruing at 1.75 a month, pro-rated for mid-year joiners, up to 10 carried
+forward) and 12 days sick (no carry-forward). Those are the numbers the leave module
+enforces, because they are the numbers the assistant quotes — an employee told "21 days"
+who then sees a different figure has been given two answers by one system.
+
+Casual leave is deliberately absent for the same reason: the handbook does not mention
+it, so the assistant could not answer questions about a type the app enforced. Unpaid
+leave carries no balance and is always available, which is what the "you have only N
+days left" refusal points at.
+
+Balances are stored counters, written in the same transaction as the approval that
+causes them, so displaying a balance is one row read rather than a scan over requests.
+The risk of a cached figure is drift, so `recompute_used_days()` rebuilds it from the
+requests themselves and a test asserts the two agree after a mixed sequence of
+approvals, rejections and withdrawals.
 
 #### How a new request type is added
 

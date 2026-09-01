@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -15,7 +17,7 @@ from tests.conftest import API, HR, _make_user, auth_headers
 
 EMPLOYEE = {"email": "requester@example.com", "password": "Requester@123"}
 LEAVE = {
-    "leave_kind": "casual",
+    "leave_kind": "annual",
     "start_date": "2026-09-14",
     "end_date": "2026-09-16",
     "reason": "Family wedding",
@@ -29,6 +31,9 @@ def _link_employee(db: Session, user: User, *, code: str = "EMP9001") -> Employe
         first_name="Asha",
         last_name="Rao",
         work_email=user.email,
+        # Joined in an earlier year, so the full entitlement applies and these
+        # tests exercise the engine rather than the pro-rating rules.
+        date_of_joining=date(2024, 4, 1),
     )
     db.add(employee)
     db.commit()
@@ -61,7 +66,7 @@ def test_an_employee_can_submit_leave_and_sees_it_pending(client, employee_ctx):
     assert created["status"] == "pending"
     assert created["type"] == "leave"
     assert created["request_code"].startswith("REQ-")
-    assert created["summary"] == "Casual leave · 3 days · 14 Sep – 16 Sep 2026"
+    assert created["summary"] == "Annual leave · 3 days · 14 Sep – 16 Sep 2026"
     assert created["can_cancel"] is True
     assert created["can_decide"] is False  # own request
 
@@ -272,13 +277,42 @@ def test_an_employee_can_withdraw_a_pending_request(client, employee_ctx):
     assert cancelled["can_cancel"] is False
 
 
-def test_a_decided_request_cannot_be_withdrawn(client, employee_ctx, hr_headers):
+def test_a_rejected_request_cannot_be_withdrawn(client, employee_ctx, hr_headers):
+    """There is nothing left to withdraw; the decision already went against it."""
     created = _submit(client, employee_ctx["headers"])
-    client.post(f"{API}/requests/{created['id']}/approve", json={}, headers=hr_headers)
+    client.post(
+        f"{API}/requests/{created['id']}/reject", json={"note": "no"}, headers=hr_headers
+    )
     response = client.post(
         f"{API}/my-requests/{created['id']}/cancel", headers=employee_ctx["headers"]
     )
     assert response.status_code == 409
+
+
+def test_an_approved_request_that_has_not_started_can_still_be_withdrawn(
+    client, employee_ctx, hr_headers
+):
+    """Plans change. Forcing someone to take leave they no longer want, or to
+    ask HR to unpick it by hand, is worse than reversing it here — and the
+    reversal gives back whatever the approval consumed. The "already started"
+    case is covered in tests/test_leave.py, where the balance can be checked."""
+    created = _submit(client, employee_ctx["headers"])
+    client.post(f"{API}/requests/{created['id']}/approve", json={}, headers=hr_headers)
+
+    response = client.post(
+        f"{API}/my-requests/{created['id']}/cancel", headers=employee_ctx["headers"]
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "cancelled"
+
+
+def test_a_cancelled_request_cannot_be_cancelled_again(client, employee_ctx):
+    created = _submit(client, employee_ctx["headers"])
+    client.post(f"{API}/my-requests/{created['id']}/cancel", headers=employee_ctx["headers"])
+    again = client.post(
+        f"{API}/my-requests/{created['id']}/cancel", headers=employee_ctx["headers"]
+    )
+    assert again.status_code == 409
 
 
 def test_one_employee_cannot_withdraw_anothers_request(client, db, employee_ctx):
@@ -303,7 +337,7 @@ def test_submitting_notifies_hr(client, db, employee_ctx, hr_user):
     ).all()
     assert [n.user_id for n in rows] == [hr_user.id]
     assert "Asha Rao" in rows[0].title
-    assert rows[0].body == "Casual leave · 3 days · 14 Sep – 16 Sep 2026"
+    assert rows[0].body == "Annual leave · 3 days · 14 Sep – 16 Sep 2026"
 
 
 def test_a_decision_notifies_the_employee(client, db, employee_ctx, hr_headers):

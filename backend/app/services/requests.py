@@ -16,6 +16,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable
 from datetime import date
+from decimal import Decimal
 from typing import ClassVar
 
 from pydantic import BaseModel, Field, model_validator
@@ -23,9 +24,15 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ConflictError, PermissionDeniedError, ValidationError
-from app.core.security import utcnow
+from app.core.security import today_utc, utcnow
 from app.models.employee import Employee
-from app.models.enums import NotificationType, RequestStatus, RequestType, UserRole
+from app.models.enums import (
+    LeaveKind,
+    NotificationType,
+    RequestStatus,
+    RequestType,
+    UserRole,
+)
 from app.models.request import Request
 from app.models.user import User
 from app.services.notifications import employee_recipient, notify, notify_hr
@@ -51,6 +58,11 @@ class RequestPayload(BaseModel):
     `summarise()` is what the approval queue and the notifications render, so
     each type states its own one-liner rather than every consumer learning to
     read every payload shape.
+
+    The three hooks are how a type gets side effects — leave draws down a
+    balance — without the engine learning about it. submit/approve/cancel call
+    them generically; the default implementations do nothing, so a type that
+    needs none of this defines none of them.
     """
 
     label: ClassVar[str] = "Request"
@@ -58,18 +70,22 @@ class RequestPayload(BaseModel):
     def summarise(self) -> str:  # pragma: no cover - overridden by every type
         return self.label
 
+    def check_submittable(self, db: Session, *, employee: Employee) -> None:
+        """Raise if this request cannot be accepted. Runs before it is stored."""
 
-LEAVE_KINDS = ("casual", "sick", "earned", "unpaid")
+    def on_approved(self, db: Session, *, employee: Employee) -> None:
+        """Apply the consequences of approval, in the approving transaction."""
+
+    def on_reversed(self, db: Session, *, employee: Employee) -> None:
+        """Undo those consequences when an approved request stops counting."""
+
+
+LEAVE_KINDS = tuple(k.value for k in LeaveKind)
 
 
 @payload_for(RequestType.LEAVE)
 class LeavePayload(RequestPayload):
-    """A leave request.
-
-    Entitlement and balance are deliberately not checked here — that is the
-    Leave Application module. This validates only what makes the request
-    coherent on its own terms.
-    """
+    """A leave request, checked against the employee's balance."""
 
     label: ClassVar[str] = "Leave"
 
@@ -99,6 +115,58 @@ class LeavePayload(RequestPayload):
         if self.half_day:
             return 0.5
         return float((self.end_date - self.start_date).days + 1)
+
+    @property
+    def kind(self) -> LeaveKind:
+        return LeaveKind(self.leave_kind)
+
+    # --- Balance lifecycle --------------------------------------------------
+    # Leave that spans a year boundary is charged wholly to the year it starts
+    # in. Splitting it across two balances is the technically correct answer
+    # and a large amount of machinery for a case this build does not need; the
+    # start year is at least predictable and matches how the request reads.
+
+    def check_submittable(self, db: Session, *, employee: Employee) -> None:
+        from app.services.leave import check_available
+
+        check_available(
+            db,
+            employee=employee,
+            kind=self.kind,
+            days=Decimal(str(self.days)),
+            year=self.start_date.year,
+        )
+
+    def on_approved(self, db: Session, *, employee: Employee) -> None:
+        from app.services.leave import check_available, deduct
+
+        # Re-checked here because another request may have been approved since
+        # this one was submitted, consuming the same days.
+        check_available(
+            db,
+            employee=employee,
+            kind=self.kind,
+            days=Decimal(str(self.days)),
+            year=self.start_date.year,
+        )
+        deduct(
+            db,
+            employee=employee,
+            kind=self.kind,
+            days=Decimal(str(self.days)),
+            year=self.start_date.year,
+        )
+
+    def on_reversed(self, db: Session, *, employee: Employee) -> None:
+        from app.services.leave import restore
+
+        restore(
+            db,
+            employee=employee,
+            kind=self.kind,
+            days=Decimal(str(self.days)),
+            year=self.start_date.year,
+        )
 
     def summarise(self) -> str:
         span = (
@@ -179,6 +247,24 @@ def owns(user: User, request: Request) -> bool:
     return request.employee.user_id == user.id
 
 
+def can_cancel(user: User, request: Request) -> bool:
+    """May this user withdraw this request?
+
+    The same rule cancel() enforces, exposed so the UI can ask rather than
+    re-derive it. They drifted once already: the API accepted withdrawal of
+    approved future leave while the row reported can_cancel=False, so the
+    button never appeared and the feature was unreachable.
+    """
+    if not owns(user, request):
+        return False
+    if request.is_open:
+        return True
+    if request.status is not RequestStatus.APPROVED:
+        return False
+    starts_on = _starts_on(request)
+    return starts_on is None or starts_on > today_utc()
+
+
 # --- Transitions -------------------------------------------------------------
 
 
@@ -192,6 +278,8 @@ def submit(
 ) -> Request:
     """Create a pending request and tell the approvers about it."""
     payload = validate_payload(request_type, raw_payload)
+    # Type-specific admissibility — for leave, that the balance covers it.
+    payload.check_submittable(db, employee=employee)
 
     request = Request(
         request_code=generate_request_code(db),
@@ -242,6 +330,13 @@ def _decide(
             )
         raise PermissionDeniedError("You cannot decide that request.")
 
+    if approved:
+        # Runs in this transaction, so a balance that cannot cover the request
+        # aborts the approval rather than leaving the two out of step.
+        validate_payload(request.type, request.payload).on_approved(
+            db, employee=request.employee
+        )
+
     request.status = RequestStatus.APPROVED if approved else RequestStatus.REJECTED
     request.decided_at = utcnow()
     request.decided_by_id = actor.id
@@ -279,16 +374,50 @@ def reject(db: Session, *, request: Request, actor: User, note: str) -> Request:
 
 
 def cancel(db: Session, *, request: Request, actor: User) -> Request:
-    """Withdraw a request. Only the requester, and only before a decision."""
+    """Withdraw a request. Only the requester's own.
+
+    A pending request can always be withdrawn. An approved one can be
+    withdrawn only while it has not started — plans change, and forcing
+    someone to take leave they no longer want, or to ask HR to unpick it by
+    hand, is worse than reversing it here. Reversal gives back whatever the
+    approval consumed.
+    """
     if not owns(actor, request):
         raise PermissionDeniedError("You can only withdraw your own requests.")
-    if not request.is_open:
+
+    if request.status is RequestStatus.APPROVED:
+        starts_on = _starts_on(request)
+        if starts_on is not None and starts_on <= today_utc():
+            raise ConflictError(
+                "That leave has already started, so it cannot be withdrawn. "
+                "Ask HR to adjust it."
+            )
+        validate_payload(request.type, request.payload).on_reversed(
+            db, employee=request.employee
+        )
+    elif not request.is_open:
         raise ConflictError(
             f"That request is already {request.status.value} and cannot be withdrawn."
         )
+
     request.status = RequestStatus.CANCELLED
     request.decided_at = utcnow()
+    # Record who withdrew it. Without this the field keeps whoever approved it,
+    # and the UI reads "Withdrawn by <the approver>" — attributing the
+    # employee's own decision to HR.
+    request.decided_by_id = actor.id
     return request
+
+
+def _starts_on(request: Request) -> date | None:
+    """The date a request's effect begins, if its payload has one."""
+    raw = (request.payload or {}).get("start_date")
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except (TypeError, ValueError):
+        return None
 
 
 # --- Queries -----------------------------------------------------------------

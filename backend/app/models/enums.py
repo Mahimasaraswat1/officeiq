@@ -176,6 +176,29 @@ class HolidayType(str, Enum):
     COMPANY = "company"        # company-declared (founding day, shutdown)
 
 
+class LeaveKind(str, Enum):
+    """Leave types, taken from the handbook the assistant already quotes.
+
+    "Casual leave" is deliberately absent. The Annual Leave Policy and Sick
+    Leave documents define 21 and 12 days respectively and say nothing about
+    casual leave, so giving it a balance would mean the assistant could not
+    answer questions about a type the app enforces — the two would disagree,
+    and the handbook is the thing employees are told to trust.
+
+    UNPAID carries no balance: it is always available by definition, which is
+    what makes it the escape hatch when a paid balance is exhausted.
+    """
+
+    ANNUAL = "annual"
+    SICK = "sick"
+    UNPAID = "unpaid"
+
+    @property
+    def is_paid(self) -> bool:
+        """Whether this type draws down a balance."""
+        return self is not LeaveKind.UNPAID
+
+
 class RequestType(str, Enum):
     """What kind of thing is being asked for.
 

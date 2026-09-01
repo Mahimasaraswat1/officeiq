@@ -20,15 +20,20 @@ from app.models.employee import Employee
 from app.models.enums import AuditAction, RequestStatus, RequestType, UserRole
 from app.models.request import Request
 from app.schemas.request import (
+    LeaveBalanceRead,
+    LeaveBalanceSummary,
     RequestCounts,
     RequestCreate,
     RequestDecision,
     RequestRead,
     RequestRejection,
 )
+from app.core.security import today_utc
 from app.services.audit import record_audit
+from app.services.leave import balances_for
 from app.services.requests import (
     approve,
+    can_cancel,
     can_decide,
     cancel,
     for_employee,
@@ -65,7 +70,7 @@ def _to_read(request: Request, *, viewer) -> RequestRead:
         decided_by_name=request.decided_by.full_name if request.decided_by else None,
         decision_note=request.decision_note,
         can_decide=request.is_open and can_decide(viewer, request),
-        can_cancel=request.is_open and owns(viewer, request),
+        can_cancel=can_cancel(viewer, request),
     )
 
 
@@ -145,6 +150,42 @@ def cancel_request(
     db.commit()
     db.refresh(request)
     return _to_read(request, viewer=user)
+
+
+@router.get(
+    "/my-leave-balance",
+    response_model=LeaveBalanceSummary,
+    summary="My leave balance",
+)
+def my_leave_balance(
+    db: DbSession,
+    user: CurrentUser,
+    year: Annotated[int | None, Query(ge=1970, le=2200)] = None,
+) -> LeaveBalanceSummary:
+    """This year's entitlement, usage and remainder.
+
+    Rows are created on first read rather than by a year-start job, so a new
+    employee sees a correct pro-rated balance without anything having run.
+    """
+    employee = _my_employee(db, user)
+    resolved = year if year is not None else today_utc().year
+    rows = balances_for(db, employee=employee, year=resolved)
+    db.commit()
+
+    return LeaveBalanceSummary(
+        year=resolved,
+        balances=[
+            LeaveBalanceRead(
+                leave_kind=b.leave_kind,
+                year=b.year,
+                entitled_days=float(b.entitled_days),
+                carried_forward_days=float(b.carried_forward_days),
+                used_days=float(b.used_days),
+                available_days=float(b.available_days),
+            )
+            for b in rows
+        ],
+    )
 
 
 # --- Approver-facing ---------------------------------------------------------

@@ -335,6 +335,7 @@ export const api = {
   myTaskProgress: () => request('/my-task-progress'),
 
   // --- Requests & approvals ---
+  myLeaveBalance: (params) => request(`/my-leave-balance${qs(params)}`),
   myRequests: () => request('/my-requests'),
   submitRequest: (payload) => request('/my-requests', { method: 'POST', body: payload }),
   cancelRequest: (id) => request(`/my-requests/${id}/cancel`, { method: 'POST' }),

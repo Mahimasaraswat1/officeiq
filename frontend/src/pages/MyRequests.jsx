@@ -8,29 +8,88 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
-import { Alert, Button, Card, EmptyState, Field, Input, Select, Spinner, Stat } from '../components/ui'
+import { Alert, Button, Card, EmptyState, Field, Input, Select, Spinner } from '../components/ui'
 import { RequestRow } from '../components/RequestBits'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { useToast } from '../components/Toast'
 
+/**
+ * Leave types, matching the handbook the assistant quotes.
+ *
+ * Unpaid carries no balance — it is the way forward when a paid balance runs
+ * out, which is what the server's refusal message points at.
+ */
 const LEAVE_KINDS = [
-  { value: 'casual', label: 'Casual leave' },
+  { value: 'annual', label: 'Annual leave' },
   { value: 'sick', label: 'Sick leave' },
-  { value: 'earned', label: 'Earned leave' },
   { value: 'unpaid', label: 'Unpaid leave' },
 ]
+
+const KIND_LABEL = Object.fromEntries(LEAVE_KINDS.map((k) => [k.value, k.label]))
+
+/**
+ * One leave type's standing.
+ *
+ * The bar is the used proportion, so "how much is left" is legible without
+ * reading the numbers — but the numbers are there too, because a bar alone
+ * cannot tell you whether 3 days is enough for the trip you are planning.
+ */
+function BalanceCard({ balance }) {
+  const { entitled_days, carried_forward_days, used_days, available_days } = balance
+  const total = entitled_days + carried_forward_days
+  const usedPercent = total > 0 ? Math.min(100, (used_days / total) * 100) : 0
+  const low = total > 0 && available_days <= total * 0.15
+
+  return (
+    <div className="rounded-2xl bg-white p-4 shadow-card ring-1 ring-navy-100">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-sm font-semibold text-navy-900">
+          {KIND_LABEL[balance.leave_kind] ?? balance.leave_kind}
+        </p>
+        <p className="text-xs text-navy-500">{balance.year}</p>
+      </div>
+
+      <p className="mt-2">
+        <span
+          className={`text-3xl font-bold tabular-nums ${low ? 'text-amber-600' : 'text-navy-900'}`}
+        >
+          {available_days}
+        </span>
+        <span className="ml-1 text-sm text-navy-500">of {total} days left</span>
+      </p>
+
+      <div
+        className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-navy-100"
+        role="img"
+        aria-label={`${used_days} of ${total} days used`}
+      >
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${
+            low ? 'bg-amber-500' : 'bg-accent-600'
+          }`}
+          style={{ width: `${usedPercent}%` }}
+        />
+      </div>
+
+      <p className="mt-2 text-xs text-navy-500">
+        {used_days} used
+        {carried_forward_days > 0 && ` · ${carried_forward_days} carried forward`}
+      </p>
+    </div>
+  )
+}
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
 const BLANK = {
-  leave_kind: 'casual',
+  leave_kind: 'annual',
   start_date: '',
   end_date: '',
   half_day: false,
   reason: '',
 }
 
-function LeaveForm({ onSubmit, onCancel, busy }) {
+function LeaveForm({ onSubmit, onCancel, busy, balances }) {
   const [form, setForm] = useState(BLANK)
   const set = (key) => (event) =>
     setForm((f) => ({ ...f, [key]: event.target.value }))
@@ -49,6 +108,10 @@ function LeaveForm({ onSubmit, onCancel, busy }) {
       end_date: f.half_day || !f.end_date || f.end_date < start_date ? start_date : f.end_date,
     }))
   }
+
+  // Unpaid has no balance row, so this is undefined for it — and the
+  // "available" line correctly disappears rather than showing zero.
+  const selected = balances?.find((b) => b.leave_kind === form.leave_kind)
 
   const days = useMemo(() => {
     if (form.half_day) return 0.5
@@ -122,7 +185,19 @@ function LeaveForm({ onSubmit, onCancel, busy }) {
 
       {days != null && (
         <p className="text-sm text-navy-600">
-          This request covers <strong>{days}</strong> {days === 1 ? 'day' : 'days'}.
+          This request covers <strong>{days}</strong> {days === 1 ? 'day' : 'days'}
+          {selected && (
+            <>
+              {' '}· <strong>{selected.available_days}</strong> day
+              {selected.available_days === 1 ? '' : 's'} available
+              {days > selected.available_days && (
+                <span className="font-semibold text-amber-700">
+                  {' '}— more than you have left. Unpaid leave is always available.
+                </span>
+              )}
+            </>
+          )}
+          .
         </p>
       )}
 
@@ -141,6 +216,7 @@ function LeaveForm({ onSubmit, onCancel, busy }) {
 export default function MyRequests() {
   const toast = useToast()
   const [requests, setRequests] = useState([])
+  const [balances, setBalances] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -150,7 +226,9 @@ export default function MyRequests() {
 
   const load = useCallback(async () => {
     try {
-      setRequests(await api.myRequests())
+      const [rows, balance] = await Promise.all([api.myRequests(), api.myLeaveBalance()])
+      setRequests(rows)
+      setBalances(balance.balances)
       setError('')
     } catch (err) {
       // An admin account with no employee profile has nothing to request
@@ -209,18 +287,28 @@ export default function MyRequests() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-navy-900">My requests</h1>
         <p className="mt-1 text-sm text-navy-500">
-          Ask for leave and follow what happened to it. You can withdraw anything that
-          has not been decided yet.
+          Ask for leave and follow what happened to it. Anything still pending can be
+          withdrawn, and so can approved leave that has not started yet.
         </p>
       </div>
 
       <Alert>{error}</Alert>
 
-      <dl className="grid grid-cols-3 gap-4">
-        <Stat label="Awaiting a decision" value={open.length} />
-        <Stat label="Approved" value={requests.filter((r) => r.status === 'approved').length} />
-        <Stat label="Rejected" value={requests.filter((r) => r.status === 'rejected').length} />
-      </dl>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {balances.map((balance) => (
+          <BalanceCard key={balance.leave_kind} balance={balance} />
+        ))}
+        <div className="rounded-2xl bg-navy-50 p-4 ring-1 ring-navy-100">
+          <p className="text-sm font-semibold text-navy-900">Unpaid leave</p>
+          <p className="mt-2 text-sm text-navy-600">
+            Always available. Use it when a paid balance is exhausted — it needs the
+            same approval, but draws down nothing.
+          </p>
+          <p className="mt-3 text-xs text-navy-500">
+            {open.length} request{open.length === 1 ? '' : 's'} awaiting a decision
+          </p>
+        </div>
+      </div>
 
       {!adding && <Button onClick={() => setAdding(true)}>Request leave</Button>}
 
@@ -228,6 +316,7 @@ export default function MyRequests() {
         <Card title="Request leave">
           <LeaveForm
             busy={busy}
+            balances={balances}
             onCancel={() => {
               setAdding(false)
               setError('')
@@ -255,7 +344,11 @@ export default function MyRequests() {
         <Card title="Decided">
           <ul>
             {settled.map((r) => (
-              <RequestRow key={r.id} request={r} />
+              // onCancel is passed here too: approved leave that has not
+              // started yet is still withdrawable, and the row decides whether
+              // to offer it from can_cancel. Omitting the handler made the
+              // feature unreachable no matter what the server said.
+              <RequestRow key={r.id} request={r} onCancel={setWithdrawing} />
             ))}
           </ul>
         </Card>
@@ -272,8 +365,10 @@ export default function MyRequests() {
             act(() => api.cancelRequest(withdrawing.id), 'Request withdrawn.')
           }
         >
-          {withdrawing.summary} — this cannot be undone, but you can submit a new
-          request afterwards.
+          {withdrawing.summary}
+          {withdrawing.status === 'approved'
+            ? ' — the days go back onto your balance. This cannot be undone, but you can submit a new request afterwards.'
+            : ' — this cannot be undone, but you can submit a new request afterwards.'}
         </ConfirmDialog>
       )}
     </div>

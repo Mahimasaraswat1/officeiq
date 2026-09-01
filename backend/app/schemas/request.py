@@ -7,7 +7,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.enums import RequestStatus, RequestType
+from app.models.enums import LeaveKind, RequestStatus, RequestType
 
 
 class RequestCreate(BaseModel):
@@ -62,3 +62,24 @@ class RequestCounts(BaseModel):
     approved: int
     rejected: int
     cancelled: int
+
+
+class LeaveBalanceRead(BaseModel):
+    """One leave type's standing for the year."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    leave_kind: LeaveKind
+    year: int
+    entitled_days: float
+    carried_forward_days: float
+    used_days: float
+    available_days: float
+
+
+class LeaveBalanceSummary(BaseModel):
+    year: int
+    balances: list[LeaveBalanceRead]
+    # Stated rather than left for the client to infer from a missing row:
+    # unpaid leave has no balance because it is always available.
+    unpaid_always_available: bool = True
