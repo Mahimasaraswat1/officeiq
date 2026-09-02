@@ -20,7 +20,7 @@ services:
   - type: web
     name: officeiq-api
     runtime: docker
-    plan: free
+   
     region: oregon
     rootDir: backend
     dockerfilePath: ./Dockerfile
