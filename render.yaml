@@ -27,7 +27,7 @@ services:
     healthCheckPath: /health
     # Migrations run before the new instance takes traffic, and the demo seed
     # is idempotent, so a redeploy re-running it changes nothing.
-    preDeployCommand: "alembic upgrade head && python -m app.seed --demo"
+    startCommand: "alembic upgrade head && python -m app.seed --demo && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${WEB_CONCURRENCY:-1} --proxy-headers --forwarded-allow-ips='*'"
     envVars:
       - key: ENVIRONMENT
         value: staging
